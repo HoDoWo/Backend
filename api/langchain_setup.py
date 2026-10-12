@@ -8,7 +8,10 @@ from typing import Any
 from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
+from .logging_config import get_logger
 
+
+logger = get_logger(__name__)
 
 SYSTEM_PROMPT = """You are HoDoWo, a cautious multimodal home-appliance assistant.
 Always identify the appliance before retrieving instructions. Then generate an annotated
@@ -44,6 +47,7 @@ def generate_overlay(
 def _get_openrouter_llm() -> ChatOpenAI:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
+        logger.error("OPENROUTER_API_KEY is not configured")
         raise RuntimeError("OPENROUTER_API_KEY is not configured")
 
     return ChatOpenAI(
@@ -55,6 +59,7 @@ def _get_openrouter_llm() -> ChatOpenAI:
 
 def build_agent(image_path: str | None = None):
     """Build the HoDoWo agent with the declared appliance tools."""
+    logger.debug("Building LangChain agent (has_image=%s)", image_path is not None)
 
     def identify_tool(user_context: str = "") -> dict[str, Any]:
         return identify_appliance(image_path, user_context)

@@ -1,89 +1,76 @@
-import httpx
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from api.index import app
 
 
-class FakeAsyncClient:
-    def __init__(self, response: httpx.Response):
-        self.response = response
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        return False
-
-    async def post(self, *args, **kwargs):
-        return self.response
-
-
 client = TestClient(app)
 
 
-def test_chat_returns_llm_reply(monkeypatch):
-    response = httpx.Response(
-        200,
-        json={"choices": [{"message": {"content": "Hello from the LLM"}}]},
-        request=httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions"),
-    )
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    monkeypatch.setattr(
-        "api.index.httpx.AsyncClient",
-        lambda **kwargs: FakeAsyncClient(response),
-    )
+class FakeAgent:
+    def __init__(self, response: str = "Hello from the agent"):
+        self.response = response
+        self.request = None
+
+    def invoke(self, request):
+        self.request = request
+        return {"messages": [type("Message", (), {"content": self.response})()]}
+
+
+def test_chat_sends_text_to_langchain_agent(monkeypatch):
+    agent = FakeAgent()
+    monkeypatch.setattr("api.index.build_agent", lambda image_path: agent)
 
     result = client.post("/api/chat", json={"message": "Hello"})
 
     assert result.status_code == 200
-    assert result.json() == {"reply": "Hello from the LLM"}
+    assert result.json() == {"reply": "Hello from the agent"}
+    assert agent.request["messages"][0]["content"] == "Hello"
 
 
-def test_chat_sends_expected_openrouter_request(monkeypatch):
+def test_chat_accepts_image_without_text(monkeypatch):
+    agent = FakeAgent()
     captured = {}
-    response = httpx.Response(
-        200,
-        json={"choices": [{"message": {"content": "Reply"}}]},
-        request=httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions"),
+
+    def fake_build_agent(image_path):
+        captured["image_path"] = image_path
+        return agent
+
+    monkeypatch.setattr("api.index.build_agent", fake_build_agent)
+
+    result = client.post(
+        "/api/chat",
+        files={"image": ("appliance.jpg", b"image-content", "image/jpeg")},
     )
-
-    class CapturingAsyncClient(FakeAsyncClient):
-        async def post(self, url, **kwargs):
-            captured["url"] = url
-            captured["kwargs"] = kwargs
-            return self.response
-
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    monkeypatch.setattr(
-        "api.index.httpx.AsyncClient",
-        lambda **kwargs: CapturingAsyncClient(response),
-    )
-
-    result = client.post("/api/chat", json={"message": "What is walking skeleton?"})
 
     assert result.status_code == 200
-    assert captured["url"] == "https://openrouter.ai/api/v1/chat/completions"
-    assert captured["kwargs"]["headers"] == {"Authorization": "Bearer test-key"}
-    assert captured["kwargs"]["json"] == {
-        "model": "openrouter/free",
-        "messages": [
-            {"role": "user", "content": "What is walking skeleton?"},
-        ],
-    }
+    assert result.json() == {"reply": "Hello from the agent"}
+    assert "Uploaded image path:" in agent.request["messages"][0]["content"]
+    assert not Path(captured["image_path"]).exists()
 
 
-def test_chat_requires_message(monkeypatch):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+def test_chat_accepts_text_and_image(monkeypatch):
+    agent = FakeAgent()
+    monkeypatch.setattr("api.index.build_agent", lambda image_path: agent)
+
+    result = client.post(
+        "/api/chat",
+        data={"message": "How do I clean it?"},
+        files={"image": ("appliance.jpg", b"image-content", "image/jpeg")},
+    )
+
+    assert result.status_code == 200
+    assert result.json() == {"reply": "Hello from the agent"}
+    assert "How do I clean it?" in agent.request["messages"][0]["content"]
+
+
+def test_chat_requires_text_or_image(monkeypatch):
+    monkeypatch.setattr("api.index.build_agent", lambda image_path: FakeAgent())
 
     result = client.post("/api/chat", json={})
 
     assert result.status_code == 422
-
-
-def test_chat_returns_error_when_api_key_is_missing(monkeypatch):
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-
-    result = client.post("/api/chat", json={"message": "Hello"})
-
-    assert result.status_code == 500
-    assert result.json() == {"detail": "OPENROUTER_API_KEY is not configured"}
+    assert result.json() == {
+        "detail": "provide at least one of image or message",
+    }

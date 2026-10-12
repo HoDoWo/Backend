@@ -1,2 +1,5 @@
 fastapi
 httpx
+langchain
+langchain-openai
+python-multipart

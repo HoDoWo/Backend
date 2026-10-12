@@ -1,0 +1,91 @@
+"""
+LangChain agent construction for the HoDoWo appliance assistant.
+"""
+
+import os
+from typing import Any
+
+from langchain.agents import create_agent
+from langchain_core.tools import StructuredTool
+from langchain_openai import ChatOpenAI
+
+
+SYSTEM_PROMPT = """You are HoDoWo, a cautious multimodal home-appliance assistant.
+Always identify the appliance before retrieving instructions. Then generate an annotated
+image when the user asks how to do something or when visual guidance is useful.
+If any tool reports low confidence, missing model, needs_better_image, or needs_clarification,
+call the relevant tool again with a more precise request; do not guess. You may retry each
+tool at most twice. Never recommend unsafe servicing, bypassing safety features, or opening
+the appliance. End with a concise answer and include the generated image URL when available."""
+
+
+def identify_appliance(image_path: str, user_context: str = "") -> dict[str, Any]:
+    """Declare the appliance-identification tool contract."""
+    del image_path, user_context
+    raise NotImplementedError("appliance identification is not implemented")
+
+
+def retrieve_manual(query: str) -> dict[str, Any]:
+    """Declare the appliance-manual retrieval tool contract."""
+    del query
+    raise NotImplementedError("manual retrieval is not implemented")
+
+
+def generate_overlay(
+    image_path: str,
+    instructions: str,
+    steps: list[str],
+) -> dict[str, Any]:
+    """Declare the annotated-image generation tool contract."""
+    del image_path, instructions, steps
+    raise NotImplementedError("image overlay generation is not implemented")
+
+
+def _get_openrouter_llm() -> ChatOpenAI:
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY is not configured")
+
+    return ChatOpenAI(
+        model="openrouter/free",
+        api_key=api_key,
+        base_url="https://openrouter.ai/api/v1",
+    )
+
+
+def build_agent(image_path: str | None = None):
+    """Build the HoDoWo agent with the declared appliance tools."""
+
+    def identify_tool(user_context: str = "") -> dict[str, Any]:
+        return identify_appliance(image_path, user_context)
+
+    def overlay_tool(instructions: str, steps: list[str]) -> dict[str, Any]:
+        return generate_overlay(image_path, instructions, steps)
+
+    identify = StructuredTool.from_function(
+        func=identify_tool,
+        name="appliance_identification",
+        description="Identify the appliance, brand and model from the uploaded image.",
+    )
+    manual = StructuredTool.from_function(
+        func=retrieve_manual,
+        name="manual_retrieve",
+        description=(
+            "Find safe operating instructions by auto-fetching and searching "
+            "appliance PDF manuals via Google Search."
+        ),
+    )
+    overlay = StructuredTool.from_function(
+        func=overlay_tool,
+        name="image_generation",
+        description=(
+            "Generate an annotated overlay of the original image using "
+            "Kie Nano Banana."
+        ),
+    )
+
+    return create_agent(
+        _get_openrouter_llm(),
+        [identify, manual, overlay],
+        system_prompt=SYSTEM_PROMPT,
+    )

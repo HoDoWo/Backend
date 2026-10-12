@@ -1,16 +1,30 @@
 from pathlib import Path
 import tempfile
+from collections.abc import Mapping
 
 from fastapi import FastAPI, HTTPException, Request
 from starlette.datastructures import UploadFile
 
-from .langchain_setup import build_agent
-from .logging_config import get_logger
+if __package__:
+    from .langchain_setup import build_agent
+    from .logging_config import get_logger
+else:
+    from langchain_setup import build_agent
+    from logging_config import get_logger
 
 app = FastAPI()
 logger = get_logger(__name__)
 
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
+
+
+def _find_uploaded_image(form: Mapping[str, object]) -> UploadFile | None:
+    """Find an uploaded image regardless of the multipart field name."""
+    for value in form.values():
+        if isinstance(value, UploadFile) and value.content_type:
+            if value.content_type.startswith("image/"):
+                return value
+    return None
 
 
 @app.post("/api/chat")
@@ -22,9 +36,7 @@ async def chat(request: Request) -> dict[str, str]:
     if request.headers.get("content-type", "").startswith("multipart/form-data"):
         form = await request.form()
         message = form.get("message") or form.get("text") or ""
-        form_image = form.get("image")
-        if isinstance(form_image, UploadFile):
-            image = form_image
+        image = _find_uploaded_image(form)
     else:
         body = await request.json()
         message = body.get("message") or body.get("text") or ""

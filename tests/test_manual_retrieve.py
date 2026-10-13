@@ -1,0 +1,73 @@
+import json
+
+import pytest
+
+from api import manual_retrieve as manual_module
+
+
+def _identification():
+    return {
+        "appliance_name": "washing machine",
+        "brand": "HoDoWo",
+        "model": "HW-100",
+        "confidence": 0.92,
+        "visible_evidence": "Brand and model label visible",
+        "needs_better_image": False,
+    }
+
+
+class FakeResponse:
+    def __init__(self, content):
+        self.content = content
+
+
+class FakeModel:
+    def __init__(self, response):
+        self.response = response
+        self.messages = None
+
+    def invoke(self, messages):
+        self.messages = messages
+        return self.response
+
+
+def _manual_result():
+    return {
+        "summary": "Use the quick wash program.",
+        "steps": ["Turn the program dial to Quick Wash.", "Press Start."],
+        "warnings": ["Close the door before starting."],
+        "needs_clarification": False,
+        "confidence": 0.9,
+    }
+
+
+def test_retrieve_manual_uses_identification_result(monkeypatch):
+    model = FakeModel(FakeResponse(json.dumps(_manual_result())))
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
+
+    result = manual_module.retrieve_manual(_identification(), "How do I run a quick wash?")
+
+    assert result == _manual_result()
+    human_text = model.messages[1][1]
+    assert json.dumps(_identification(), ensure_ascii=True) in human_text
+    assert "How do I run a quick wash?" in human_text
+
+
+def test_retrieve_manual_accepts_json_code_fence(monkeypatch):
+    model = FakeModel(FakeResponse(f"```json\n{json.dumps(_manual_result())}\n```"))
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
+
+    assert manual_module.retrieve_manual(_identification(), "How do I start it?") == _manual_result()
+
+
+def test_retrieve_manual_rejects_incomplete_identification(monkeypatch):
+    with pytest.raises(ValueError, match="missing required appliance fields"):
+        manual_module.retrieve_manual({"brand": "HoDoWo"}, "How do I start it?")
+
+
+def test_retrieve_manual_rejects_invalid_response(monkeypatch):
+    model = FakeModel(FakeResponse('{"summary": "not enough"}'))
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
+
+    with pytest.raises(RuntimeError, match="missing required fields"):
+        manual_module.retrieve_manual(_identification(), "How do I start it?")

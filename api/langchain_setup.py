@@ -11,9 +11,11 @@ from langchain_openai import ChatOpenAI
 if __package__:
     from .logging_config import get_logger
     from .identify_appliance import identify_appliance
+    from .manual_retrieve import retrieve_manual
 else:
     from logging_config import get_logger
     from identify_appliance import identify_appliance
+    from manual_retrieve import retrieve_manual
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -31,12 +33,6 @@ ask the user for the missing information or image instead of guessing. Do not re
 when the required input is absent. Never recommend unsafe servicing, bypassing safety
 features, or opening the appliance. End with a concise answer and include the generated
 image URL when available."""
-
-
-def retrieve_manual(query: str) -> dict[str, Any]:
-    """Declare the appliance-manual retrieval tool contract."""
-    del query
-    raise NotImplementedError("manual retrieval is not implemented")
 
 
 def generate_overlay(
@@ -81,8 +77,9 @@ def build_agent(image_path: str | None = None):
         func=retrieve_manual,
         name="manual_retrieve",
         description=(
-            "Find safe operating instructions by auto-fetching and searching "
-            "appliance PDF manuals via Google Search."
+            "Retrieve safe operating instructions using the complete structured "
+            "result from appliance_identification and the user's requested action. "
+            "Pass the previous identification result as identification."
         ),
     )
     overlay = StructuredTool.from_function(

@@ -3,12 +3,15 @@ import tempfile
 from collections.abc import Mapping
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from starlette.datastructures import UploadFile
 
 if __package__:
+    from .auth import PUBLIC_PATHS, AuthError, authenticate_request
     from .langchain_setup import build_agent
     from .logging_config import get_logger
 else:
+    from auth import PUBLIC_PATHS, AuthError, authenticate_request
     from langchain_setup import build_agent
     from logging_config import get_logger
 
@@ -16,6 +19,26 @@ app = FastAPI()
 logger = get_logger(__name__)
 
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
+
+
+@app.middleware("http")
+async def jwt_interceptor(request: Request, call_next):
+    """Reject every request that lacks a valid JWT before it reaches a route."""
+    # CORS preflight requests never carry credentials.
+    if request.method == "OPTIONS" or request.url.path in PUBLIC_PATHS:
+        return await call_next(request)
+
+    try:
+        # Claims are available to routes as request.state.user.
+        request.state.user = authenticate_request(request.headers.get("authorization"))
+    except AuthError as exc:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=exc.headers,
+        )
+
+    return await call_next(request)
 
 
 def _find_uploaded_image(form: Mapping[str, object]) -> UploadFile | None:

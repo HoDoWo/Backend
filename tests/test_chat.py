@@ -3,9 +3,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from api.index import app
+from jwt_helpers import bearer, make_token
 
 
-client = TestClient(app)
+client = TestClient(app, headers=bearer(make_token()))
 
 
 class FakeAgent:

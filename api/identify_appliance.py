@@ -137,6 +137,6 @@ def identify_appliance(image_path: str | None, user_context: str = "") -> dict[s
             ),
         ]
     )
+    logger.info(f"Appliance identification completed successfully: {response.content}")
     result = _parse_response(response.content)
-    logger.info(f"Appliance identification completed successfully: {result}")
     return result

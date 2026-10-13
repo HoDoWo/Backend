@@ -48,9 +48,24 @@ def test_retrieve_manual_uses_identification_result(monkeypatch):
     result = manual_module.retrieve_manual(_identification(), "How do I run a quick wash?")
 
     assert result == _manual_result()
-    human_text = model.messages[1][1]
+    human_text = model.messages[1][1][0]["text"]
     assert json.dumps(_identification(), ensure_ascii=True) in human_text
     assert "How do I run a quick wash?" in human_text
+
+
+def test_retrieve_manual_sends_original_image(monkeypatch, tmp_path):
+    image = tmp_path / "appliance.jpg"
+    image.write_bytes(b"image-bytes")
+    model = FakeModel(FakeResponse(json.dumps(_manual_result())))
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
+
+    manual_module.retrieve_manual(
+        _identification(), "How do I run a quick wash?", str(image)
+    )
+
+    human_content = model.messages[1][1]
+    assert human_content[1]["type"] == "image_url"
+    assert human_content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
 
 
 def test_retrieve_manual_accepts_json_code_fence(monkeypatch):

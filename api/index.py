@@ -1,21 +1,39 @@
 from pathlib import Path
 import tempfile
+import json
 from collections.abc import Mapping
 
 from fastapi import FastAPI, HTTPException, Request
 from starlette.datastructures import UploadFile
 
 if __package__:
-    from .langchain_setup import build_agent
+    from .langchain_setup import build_agent, ensure_image_overlay
     from .logging_config import get_logger
 else:
-    from langchain_setup import build_agent
+    from langchain_setup import build_agent, ensure_image_overlay
     from logging_config import get_logger
 
 app = FastAPI()
 logger = get_logger(__name__)
 
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
+
+
+def _find_generated_image(messages: list[object]) -> str | None:
+    """Extract the latest image-generation result from LangChain tool messages."""
+    for message in reversed(messages):
+        content = getattr(message, "content", None)
+        candidates = content if isinstance(content, list) else [content]
+        for candidate in candidates:
+            value = candidate
+            if isinstance(candidate, str):
+                try:
+                    value = json.loads(candidate)
+                except json.JSONDecodeError:
+                    continue
+            if isinstance(value, dict) and value.get("image_url"):
+                return str(value["image_url"])
+    return None
 
 
 def _find_uploaded_image(form: Mapping[str, object]) -> UploadFile | None:
@@ -28,7 +46,7 @@ def _find_uploaded_image(form: Mapping[str, object]) -> UploadFile | None:
 
 
 @app.post("/api/chat")
-async def chat(request: Request) -> dict[str, str]:
+async def chat(request: Request) -> dict[str, str | None]:
     """Run every text and/or image request through the LangChain agent."""
     image: UploadFile | None = None
     image_path: str | None = None
@@ -76,7 +94,13 @@ async def chat(request: Request) -> dict[str, str]:
             {"messages": [{"role": "user", "content": prompt}]}
         )
         logger.info("LangChain agent completed successfully")
-        return {"reply": result["messages"][-1].content}
+        messages = result["messages"]
+        answer = messages[-1].content
+        generated_image = ensure_image_overlay(messages, image_path, message)
+        return {
+            "reply": answer,
+            "image": generated_image or _find_generated_image(messages),
+        }
     except RuntimeError as exc:
         logger.error("LangChain agent failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc

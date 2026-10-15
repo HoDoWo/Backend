@@ -3,22 +3,46 @@ import tempfile
 from collections.abc import Mapping
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from starlette.datastructures import UploadFile
 
 if __package__:
     from .auth import PUBLIC_PATHS, AuthError, authenticate_request
+    from .config import get_settings
     from .langchain_setup import build_agent
     from .logging_config import get_logger
 else:
     from auth import PUBLIC_PATHS, AuthError, authenticate_request
+    from config import get_settings
     from langchain_setup import build_agent
     from logging_config import get_logger
 
-app = FastAPI()
+settings = get_settings()
+app = FastAPI(title="HoDoWo backend")
 logger = get_logger(__name__)
 
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
+
+
+def _client_ip(request: Request) -> str:
+    """Return the caller IP, honouring the proxy header Vercel sets."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip()
+    return get_remote_address(request)
+
+
+# Per-IP limiter for the AI endpoints. The counter lives in process memory:
+# on Vercel each request may hit a different instance, so this is basic
+# protection only. A shared store (Upstash Redis) is needed for a hard limit.
+limiter = Limiter(key_func=_client_ip)
+ai_rate_limit = limiter.limit(settings.ai_rate_limit)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 @app.middleware("http")
@@ -41,6 +65,23 @@ async def jwt_interceptor(request: Request, call_next):
     return await call_next(request)
 
 
+# CORS is added after the JWT middleware so it is the outermost layer and can
+# attach its headers to every response, including authentication errors. Only
+# the browser origins listed in ALLOWED_ORIGINS are accepted, never a wildcard.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.allowed_origins),
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    """Report that the backend is up. Public: no token required."""
+    return {"status": "ok"}
+
+
 def _find_uploaded_image(form: Mapping[str, object]) -> UploadFile | None:
     """Find an uploaded image regardless of the multipart field name."""
     for value in form.values():
@@ -51,6 +92,7 @@ def _find_uploaded_image(form: Mapping[str, object]) -> UploadFile | None:
 
 
 @app.post("/api/chat")
+@ai_rate_limit
 async def chat(request: Request) -> dict[str, str]:
     """Run every text and/or image request through the LangChain agent."""
     image: UploadFile | None = None

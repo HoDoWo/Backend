@@ -2,17 +2,19 @@
 LangChain agent construction for the HoDoWo appliance assistant.
 """
 
-import os
 from typing import Any
 
 from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
+
 if __package__:
+    from .config import get_openrouter_api_key, get_openrouter_model
     from .logging_config import get_logger
     from .identify_appliance import identify_appliance
     from .manual_retrieve import retrieve_manual
 else:
+    from config import get_openrouter_api_key, get_openrouter_model
     from logging_config import get_logger
     from identify_appliance import identify_appliance
     from manual_retrieve import retrieve_manual
@@ -46,14 +48,9 @@ def generate_overlay(
 
 
 def _get_openrouter_llm() -> ChatOpenAI:
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        logger.error("OPENROUTER_API_KEY is not configured")
-        raise RuntimeError("OPENROUTER_API_KEY is not configured")
-
     return ChatOpenAI(
-        model="openrouter/free",
-        api_key=api_key,
+        model=get_openrouter_model(),
+        api_key=get_openrouter_api_key(),
         base_url="https://openrouter.ai/api/v1",
     )
 

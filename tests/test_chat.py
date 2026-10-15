@@ -26,7 +26,7 @@ def test_chat_sends_text_to_langchain_agent(monkeypatch):
     result = client.post("/api/chat", json={"message": "Hello"})
 
     assert result.status_code == 200
-    assert result.json() == {"answer": "Hello from the agent"}
+    assert result.json() == {"reply": "Hello from the agent"}
     assert agent.request["messages"][0]["content"] == "Hello"
 
 
@@ -46,7 +46,7 @@ def test_chat_accepts_image_without_text(monkeypatch):
     )
 
     assert result.status_code == 200
-    assert result.json() == {"answer": "Hello from the agent"}
+    assert result.json() == {"reply": "Hello from the agent"}
     assert "Uploaded image path:" in agent.request["messages"][0]["content"]
     assert not Path(captured["image_path"]).exists()
 
@@ -62,7 +62,7 @@ def test_chat_accepts_text_and_image(monkeypatch):
     )
 
     assert result.status_code == 200
-    assert result.json() == {"answer": "Hello from the agent"}
+    assert result.json() == {"reply": "Hello from the agent"}
     assert "How do I clean it?" in agent.request["messages"][0]["content"]
 
 
@@ -83,7 +83,7 @@ def test_chat_accepts_image_with_nonstandard_field_name(monkeypatch):
     )
 
     assert result.status_code == 200
-    assert result.json() == {"answer": "Hello from the agent"}
+    assert result.json() == {"reply": "Hello from the agent"}
     assert "Uploaded image path:" in agent.request["messages"][0]["content"]
     assert not Path(captured["image_path"]).exists()
 

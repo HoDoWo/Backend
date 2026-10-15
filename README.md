@@ -11,11 +11,12 @@ Built with FastAPI and deployed as a serverless function on Vercel.
 
 | Path | Content |
 |------|---------|
-| `api/index.py` | FastAPI app: `GET /health`, `POST /api/chat`, CORS, rate limiting |
+| `api/index.py` | FastAPI app: `GET /health`, `POST /api/chat`, `POST /api/panel/analyze`, CORS, rate limiting |
 | `api/config.py` | Single place that reads environment variables and validates them |
 | `api/auth.py` | JWT verification middleware (Bearer tokens) |
 | `api/langchain_setup.py` | LangChain agent wiring |
 | `api/identify_appliance.py`, `api/manual_retrieve.py` | AI tools |
+| `api/panel_analyze.py` | Button and dial detection from a cropped panel photo |
 | `api/logging_config.py` | Dev / prod logging |
 | `tests/` | Pytest suite |
 
@@ -65,6 +66,43 @@ Missing or invalid values fail fast with a clear message from `api/config.py`.
 |-------|------|------|-------------|
 | `GET` | `/health` | public | Returns `{"status": "ok"}` |
 | `POST` | `/api/chat` | Bearer JWT | Text and/or image question answered by the AI agent |
+| `POST` | `/api/panel/analyze` | Bearer JWT | Detects the buttons and dials in a cropped panel photo |
+
+### `POST /api/panel/analyze`
+
+Receives the cropped panel photo and the appliance context, calls the vision
+model and returns the controls it can see. It is the data source for the
+interactive overlay (S1-15).
+
+- **Body**: `multipart/form-data` with `image` (required), plus the optional
+  `brand`, `model` and `language` fields. `language` is a BCP-47 code (for
+  example `es`) and controls the language of the labels and descriptions.
+- **Response** (`200`):
+
+  ```json
+  {
+    "controls": [
+      {
+        "id": "c1",
+        "label": "Start/Pause",
+        "type": "button",
+        "description": "Starts or pauses the selected program",
+        "box": {"x": 0.62, "y": 0.40, "w": 0.10, "h": 0.12}
+      }
+    ]
+  }
+  ```
+
+  `type` is one of `button`, `dial`, `switch`, `display`, `other`. The box is
+  normalised to the image size (0..1), so the client can draw it at any
+  resolution; `x, y` is the top-left corner and `w, h` the size. Boxes that
+  fall outside the image are clamped, and controls without a label or a valid
+  box are dropped. The ids are renumbered to `c1..cN`.
+
+- **Controlled failures**: an image that is not a panel returns
+  `{"controls": []}`. A malformed model answer is retried once; if it is still
+  unusable the endpoint returns `502` with a clear message. Missing image →
+  `422`, non-multipart body → `415`, oversized image → `413`.
 
 ## Authentication
 
@@ -83,7 +121,8 @@ request from another origin is rejected by the browser.
 
 ## Rate limiting
 
-`POST /api/chat` is limited per client IP (default `20/minute`); exceeding it
+`POST /api/chat` and `POST /api/panel/analyze` are limited per client IP
+(default `20/minute`); exceeding it
 returns `429`. The counter is kept in process memory, so on Vercel each
 instance has its own counter and a burst can still slip through across
 instances. This is basic MVP protection; for a hard limit, back the limiter

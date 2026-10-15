@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import mimetypes
 from enum import Enum
 from pathlib import Path
@@ -164,7 +165,7 @@ def _clamp01(value: Any) -> float:
         number = float(value)
     except (TypeError, ValueError):
         return 0.0
-    if number != number:  # NaN
+    if math.isnan(number):
         return 0.0
     return min(1.0, max(0.0, number))
 

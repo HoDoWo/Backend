@@ -112,6 +112,21 @@ def test_coerce_controls_rejects_non_list_payloads():
     assert panel_module.coerce_controls(None) == []
 
 
+def test_coerce_controls_handles_non_numeric_coordinates():
+    controls = panel_module.coerce_controls(
+        [
+            {
+                "label": "Dial",
+                "type": "dial",
+                "box": {"x": "abc", "y": None, "w": 0.2, "h": 0.2},
+            }
+        ]
+    )
+
+    assert controls[0].box.x == 0.0
+    assert controls[0].box.y == 0.0
+
+
 # --- model interaction ----------------------------------------------------
 
 

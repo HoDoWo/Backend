@@ -15,11 +15,13 @@ if __package__:
     from .config import get_settings
     from .langchain_setup import build_agent
     from .logging_config import get_logger
+    from .panel_analyze import PanelControlError, analyze_panel
 else:
     from auth import PUBLIC_PATHS, AuthError, authenticate_request
     from config import get_settings
     from langchain_setup import build_agent
     from logging_config import get_logger
+    from panel_analyze import PanelControlError, analyze_panel
 
 settings = get_settings()
 app = FastAPI(title="HoDoWo backend")
@@ -91,6 +93,23 @@ def _find_uploaded_image(form: Mapping[str, object]) -> UploadFile | None:
     return None
 
 
+async def _save_uploaded_image(image: UploadFile, default_name: str) -> str:
+    """Validate an uploaded image and store it in a temporary file."""
+    if not image.content_type or not image.content_type.startswith("image/"):
+        logger.warning("Rejected request with an invalid image content type")
+        raise HTTPException(status_code=415, detail="image must be an image upload")
+
+    content = await image.read()
+    if len(content) > MAX_IMAGE_BYTES:
+        logger.warning("Rejected request because the image exceeds the size limit")
+        raise HTTPException(status_code=413, detail="image is larger than 15 MB")
+
+    suffix = Path(image.filename or default_name).suffix or ".jpg"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temporary:
+        temporary.write(content)
+        return temporary.name
+
+
 @app.post("/api/chat")
 @ai_rate_limit
 async def chat(request: Request) -> dict[str, str]:
@@ -117,19 +136,7 @@ async def chat(request: Request) -> dict[str, str]:
         )
 
     if image is not None:
-        if not image.content_type or not image.content_type.startswith("image/"):
-            logger.warning("Rejected chat request with invalid image content type")
-            raise HTTPException(status_code=415, detail="image must be an image upload")
-
-        content = await image.read()
-        if len(content) > MAX_IMAGE_BYTES:
-            logger.warning("Rejected chat request because image exceeds size limit")
-            raise HTTPException(status_code=413, detail="image is larger than 15 MB")
-
-        suffix = Path(image.filename or "appliance.jpg").suffix or ".jpg"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temporary:
-            temporary.write(content)
-            image_path = temporary.name
+        image_path = await _save_uploaded_image(image, "appliance.jpg")
 
     try:
         prompt = message or "Identify, describe and provide instructions for the appliance in the uploaded image."
@@ -148,3 +155,35 @@ async def chat(request: Request) -> dict[str, str]:
     finally:
         if image_path is not None:
             Path(image_path).unlink(missing_ok=True)
+
+
+@app.post("/api/panel/analyze")
+@ai_rate_limit
+async def panel_analyze(request: Request) -> dict[str, list[dict[str, object]]]:
+    """Detect the buttons, dials and other controls in a cropped panel photo."""
+    if not request.headers.get("content-type", "").startswith("multipart/form-data"):
+        raise HTTPException(
+            status_code=415,
+            detail="send the panel image as multipart/form-data",
+        )
+
+    form = await request.form()
+    image = _find_uploaded_image(form)
+    if image is None:
+        logger.warning("Rejected panel analysis without an image")
+        raise HTTPException(status_code=422, detail="an image upload is required")
+
+    brand = str(form.get("brand") or "").strip()
+    model = str(form.get("model") or "").strip()
+    language = str(form.get("language") or "").strip() or "en"
+
+    image_path = await _save_uploaded_image(image, "panel.jpg")
+    try:
+        controls = analyze_panel(image_path, brand=brand, model=model, language=language)
+        logger.info("Panel analysis detected %s controls", len(controls))
+        return {"controls": [control.model_dump(mode="json") for control in controls]}
+    except (PanelControlError, FileNotFoundError) as exc:
+        logger.error("Panel analysis failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        Path(image_path).unlink(missing_ok=True)

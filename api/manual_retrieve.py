@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 
 from langchain_openai import ChatOpenAI
 
 if __package__:
+    from .config import get_openrouter_api_key, get_openrouter_model
     from .logging_config import get_logger
 else:
+    from config import get_openrouter_api_key, get_openrouter_model
     from logging_config import get_logger
 
 
@@ -34,13 +35,9 @@ REQUIRED_MANUAL_FIELDS = {
 
 
 def _get_openrouter_llm() -> ChatOpenAI:
-    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("OPENROUTER_API_KEY is not configured")
-
     return ChatOpenAI(
-        model=os.getenv("OPENROUTER_MODEL", "openrouter/free"),
-        api_key=api_key,
+        model=get_openrouter_model(),
+        api_key=get_openrouter_api_key(),
         base_url="https://openrouter.ai/api/v1",
         temperature=0,
     )

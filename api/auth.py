@@ -37,7 +37,8 @@ else:
 logger = get_logger(__name__)
 
 # Paths reachable without a token. CORS preflight (OPTIONS) is always allowed.
-PUBLIC_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
+# /health is public so uptime checks and Vercel do not need credentials.
+PUBLIC_PATHS = frozenset({"/health", "/docs", "/redoc", "/openapi.json"})
 
 
 class AuthError(Exception):

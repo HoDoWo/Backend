@@ -1,4 +1,4 @@
-"""Tests for button and dial detection (S1-14)."""
+"""Tests for control panel location and button/dial detection (S1-16, S1-14)."""
 
 import json
 
@@ -290,3 +290,170 @@ def test_panel_endpoint_rejects_json_bodies():
     )
 
     assert response.status_code == 415
+
+
+# --- panel location (S1-16) -----------------------------------------------
+
+
+def _one_panel_box():
+    return {"box": {"x": 0.1, "y": 0.2, "w": 0.6, "h": 0.5}}
+
+
+def test_coerce_panel_box_clamps_coordinates_to_the_image():
+    box = panel_module.coerce_panel_box({"x": -0.2, "y": 0.9, "w": 2.0, "h": 0.4})
+
+    assert box is not None
+    assert 0 <= box.x <= 1
+    assert 0 <= box.y <= 1
+    assert box.x + box.w <= 1.0
+    assert box.y + box.h <= 1.0
+
+
+def test_coerce_panel_box_rejects_specks_and_degenerate_boxes():
+    assert panel_module.coerce_panel_box({"x": 0.5, "y": 0.5, "w": 0.01, "h": 0.01}) is None
+    assert panel_module.coerce_panel_box({"x": 0, "y": 0, "w": 0, "h": 0.5}) is None
+    assert panel_module.coerce_panel_box(None) is None
+
+
+def test_locate_panel_sends_image_context(tmp_path, monkeypatch):
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image-bytes")
+    model = FakeModel(FakeResponse(json.dumps(_one_panel_box())))
+    monkeypatch.setattr(panel_module, "_get_openrouter_llm", lambda: model)
+
+    box = panel_module.locate_panel(str(image), brand="HoDoWo", model="HW-100")
+
+    assert box is not None
+    assert box.x == pytest.approx(0.1)
+    assert box.h == pytest.approx(0.5)
+    human_content = model.calls[0][1][1]
+    assert human_content[1]["type"] == "image_url"
+    assert "HoDoWo" in human_content[0]["text"]
+    assert "HW-100" in human_content[0]["text"]
+
+
+def test_locate_panel_returns_none_when_there_is_no_panel(tmp_path, monkeypatch):
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image-bytes")
+    model = FakeModel(FakeResponse('{"box": null}'))
+    monkeypatch.setattr(panel_module, "_get_openrouter_llm", lambda: model)
+
+    assert panel_module.locate_panel(str(image)) is None
+
+
+def test_locate_panel_accepts_a_bare_box(tmp_path, monkeypatch):
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image-bytes")
+    model = FakeModel(FakeResponse('{"x": 0.2, "y": 0.1, "w": 0.5, "h": 0.4}'))
+    monkeypatch.setattr(panel_module, "_get_openrouter_llm", lambda: model)
+
+    box = panel_module.locate_panel(str(image))
+
+    assert box is not None
+    assert box.w == pytest.approx(0.5)
+
+
+def test_locate_panel_retries_once_after_invalid_json(tmp_path, monkeypatch):
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image-bytes")
+    model = FakeModel(
+        FakeResponse("this is not json"),
+        FakeResponse(json.dumps(_one_panel_box())),
+    )
+    monkeypatch.setattr(panel_module, "_get_openrouter_llm", lambda: model)
+
+    box = panel_module.locate_panel(str(image))
+
+    assert box is not None
+    assert len(model.calls) == 2
+
+
+def test_locate_panel_raises_after_two_invalid_answers(tmp_path, monkeypatch):
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image-bytes")
+    model = FakeModel(FakeResponse("nope"), FakeResponse("still nope"))
+    monkeypatch.setattr(panel_module, "_get_openrouter_llm", lambda: model)
+
+    with pytest.raises(PanelControlError):
+        panel_module.locate_panel(str(image))
+
+    assert len(model.calls) == 2
+
+
+def test_locate_panel_without_image_returns_none():
+    assert panel_module.locate_panel(None) is None
+
+
+def test_panel_locate_endpoint_returns_the_box(monkeypatch):
+    monkeypatch.setattr(
+        "api.index.locate_panel",
+        lambda *args, **kwargs: ControlBox(x=0.1, y=0.2, w=0.6, h=0.5),
+    )
+
+    response = client.post(
+        "/api/panel/locate",
+        files={"image": ("photo.jpg", b"image-bytes", "image/jpeg")},
+        data={"brand": "HoDoWo", "model": "HW-100"},
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"box": {"x": 0.1, "y": 0.2, "w": 0.6, "h": 0.5}}
+
+
+def test_panel_locate_endpoint_returns_null_without_a_panel(monkeypatch):
+    monkeypatch.setattr("api.index.locate_panel", lambda *args, **kwargs: None)
+
+    response = client.post(
+        "/api/panel/locate",
+        files={"image": ("photo.jpg", b"image-bytes", "image/jpeg")},
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"box": None}
+
+
+def test_panel_locate_endpoint_requires_auth():
+    response = client.post(
+        "/api/panel/locate",
+        files={"image": ("photo.jpg", b"image-bytes", "image/jpeg")},
+    )
+
+    assert response.status_code == 401
+
+
+def test_panel_locate_endpoint_requires_an_image():
+    response = client.post(
+        "/api/panel/locate",
+        files={"brand": (None, "HoDoWo")},
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 422
+
+
+def test_panel_locate_endpoint_rejects_json_bodies():
+    response = client.post(
+        "/api/panel/locate",
+        json={"x": 0.1},
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 415
+
+
+def test_panel_locate_endpoint_returns_502_when_the_model_fails(monkeypatch):
+    def boom(*args, **kwargs):
+        raise PanelControlError("panel location returned invalid JSON")
+
+    monkeypatch.setattr("api.index.locate_panel", boom)
+
+    response = client.post(
+        "/api/panel/locate",
+        files={"image": ("photo.jpg", b"image-bytes", "image/jpeg")},
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 502
+    assert "invalid JSON" in response.json()["detail"]

@@ -15,13 +15,13 @@ if __package__:
     from .config import get_settings
     from .langchain_setup import build_agent
     from .logging_config import get_logger
-    from .panel_analyze import PanelControlError, analyze_panel
+    from .panel_analyze import PanelControlError, analyze_panel, locate_panel
 else:
     from auth import PUBLIC_PATHS, AuthError, authenticate_request
     from config import get_settings
     from langchain_setup import build_agent
     from logging_config import get_logger
-    from panel_analyze import PanelControlError, analyze_panel
+    from panel_analyze import PanelControlError, analyze_panel, locate_panel
 
 settings = get_settings()
 app = FastAPI(title="HoDoWo backend")
@@ -184,6 +184,41 @@ async def panel_analyze(request: Request) -> dict[str, list[dict[str, object]]]:
         return {"controls": [control.model_dump(mode="json") for control in controls]}
     except (PanelControlError, FileNotFoundError) as exc:
         logger.error("Panel analysis failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        Path(image_path).unlink(missing_ok=True)
+
+
+@app.post("/api/panel/locate")
+@ai_rate_limit
+async def panel_locate(request: Request) -> dict[str, dict[str, float] | None]:
+    """Locate the control panel in a full appliance photo (S1-16).
+
+    Returns its normalised box, or ``null`` when there is no panel, so the
+    client can crop before calling ``/api/panel/analyze``.
+    """
+    if not request.headers.get("content-type", "").startswith("multipart/form-data"):
+        raise HTTPException(
+            status_code=415,
+            detail="send the photo as multipart/form-data",
+        )
+
+    form = await request.form()
+    image = _find_uploaded_image(form)
+    if image is None:
+        logger.warning("Rejected panel location without an image")
+        raise HTTPException(status_code=422, detail="an image upload is required")
+
+    brand = str(form.get("brand") or "").strip()
+    model = str(form.get("model") or "").strip()
+
+    image_path = await _save_uploaded_image(image, "appliance.jpg")
+    try:
+        box = locate_panel(image_path, brand=brand, model=model)
+        logger.info("Panel location found a panel: %s", box is not None)
+        return {"box": box.model_dump(mode="json") if box else None}
+    except (PanelControlError, FileNotFoundError) as exc:
+        logger.error("Panel location failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
         Path(image_path).unlink(missing_ok=True)

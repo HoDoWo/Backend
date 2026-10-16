@@ -1,4 +1,7 @@
-"""Button and dial detection from a cropped control-panel photo.
+"""Computer vision for appliance control panels.
+
+:func:`locate_panel` finds the control panel inside a full photo (S1-16);
+:func:`analyze_panel` then lists the buttons and dials of that cropped panel.
 
 The list returned here (see :class:`Control`) is the format shared with the
 overlay layer (S1-15):
@@ -40,6 +43,11 @@ logger = get_logger(__name__)
 
 # Safety cap so a broken answer cannot return an unbounded list.
 MAX_CONTROLS = 40
+
+# A located panel smaller than this fraction of the photo is ignored, so a
+# stray dot cannot crop the image down to nothing. The client then falls back
+# to the full photo.
+MIN_PANEL_AREA = 0.01
 
 
 class ControlType(str, Enum):
@@ -90,6 +98,16 @@ Respond ONLY with a valid JSON object, no prose and no markdown, using exactly t
 width and height, all between 0 and 1 (0,0 is the top-left of the image).
 Write "label" and "description" in the requested language.
 If the image is not a control panel, or no control is visible, respond with {"controls": []}."""
+
+LOCATOR_SYSTEM_PROMPT = """You are a computer-vision tool that locates the control panel of a home
+appliance in a photo. Look at the whole photo and find the region that holds the buttons, dials,
+switches or display the user operates.
+Respond ONLY with a valid JSON object, no prose and no markdown, using exactly this schema:
+{"box": {"x": <0..1>, "y": <0..1>, "w": <0..1>, "h": <0..1>}}
+"box" is the bounding box of the control panel normalised to the image size: x,y is the top-left \
+corner and w,h the width and height, all between 0 and 1 (0,0 is the top-left of the image).
+Include the display and every button, dial or switch in the box, and nothing else.
+If the photo does not show a control panel, respond with {"box": null}."""
 
 _LANGUAGE_NAMES = {
     "en": "English",
@@ -313,3 +331,106 @@ def analyze_panel(
             ]
 
     raise last_error or PanelControlError("panel analysis failed")
+
+
+# --- panel location (S1-16) -----------------------------------------------
+
+
+def coerce_panel_box(raw: Any) -> ControlBox | None:
+    """Validate a located panel box, or return None when it is unusable.
+
+    A box that is missing, degenerate or smaller than :data:`MIN_PANEL_AREA`
+    counts as "no panel found", so the caller can fall back to the full photo.
+    """
+    box = _coerce_box(raw)
+    if box is None:
+        return None
+    if box.w * box.h < MIN_PANEL_AREA:
+        return None
+    return box
+
+
+def _parse_panel_box(content: Any) -> ControlBox | None:
+    """Turn the model answer into a box, or None when it sees no panel."""
+    text = _as_text(content)
+    if not text.strip():
+        raise PanelControlError("panel location returned an empty response")
+
+    payload = _load_json(text)
+    if isinstance(payload, dict):
+        if "box" in payload:
+            raw = payload["box"]
+        elif "panel" in payload:
+            raw = payload["panel"]
+        elif {"x", "y", "w", "h"}.issubset(payload):
+            # The model answered with the box itself instead of wrapping it.
+            raw = payload
+        else:
+            raise PanelControlError("panel location returned no box")
+    elif isinstance(payload, list) and payload and isinstance(payload[0], dict):
+        raw = payload[0]
+    else:
+        raise PanelControlError("panel location returned no box")
+
+    return coerce_panel_box(raw)
+
+
+def _build_locator_messages(image_path: str, brand: str, model: str) -> list[Any]:
+    lines = ["Locate the control panel of the appliance in this photo."]
+    if brand:
+        lines.append(f"Appliance brand: {brand}")
+    if model:
+        lines.append(f"Appliance model: {model}")
+    context = "\n".join(lines)
+
+    return [
+        ("system", LOCATOR_SYSTEM_PROMPT),
+        (
+            "human",
+            [
+                {"type": "text", "text": context},
+                {"type": "image_url", "image_url": {"url": _image_data_url(image_path)}},
+            ],
+        ),
+    ]
+
+
+def locate_panel(
+    image_path: str | None,
+    brand: str = "",
+    model: str = "",
+) -> ControlBox | None:
+    """Locate the control panel in a full appliance photo (S1-16).
+
+    Returns the normalised box, or ``None`` when the photo has no panel.
+    Retries once when the model returns malformed JSON, then raises
+    :class:`PanelControlError`.
+    """
+    if not image_path:
+        return None
+
+    llm = _get_openrouter_llm()
+    messages = _build_locator_messages(image_path, brand, model)
+    last_error: PanelControlError | None = None
+
+    for attempt in range(2):
+        response = llm.invoke(messages)
+        try:
+            return _parse_panel_box(response.content)
+        except PanelControlError as exc:
+            last_error = exc
+            logger.warning(
+                "Panel location attempt %s produced an invalid answer: %s",
+                attempt + 1,
+                exc,
+            )
+            messages = messages + [
+                ("ai", _as_text(response.content)),
+                (
+                    "human",
+                    "That was not valid JSON. Reply again with ONLY the JSON "
+                    "object described, without markdown or extra text.",
+                ),
+            ]
+
+    raise last_error or PanelControlError("panel location failed")

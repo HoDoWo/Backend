@@ -138,7 +138,7 @@ of IP.
    every route from it (`/health`, `/api/*`); no custom routing is needed.
 
 Production health check:
-`https://<your-vercel-project>.vercel.app/health` (replace with the real URL).
+`https://backend-howdowo.vercel.app/health`.
 
 ### Serverless execution time (risk 7)
 

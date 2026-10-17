@@ -32,7 +32,7 @@ identify the appliance and provide a visual guide; do not fail or guess the mode
 Generate an annotated image when the user asks how to do something or when visual guidance
 is useful. When an image is available, always call image_generation after manual_retrieve,
 even when manual_retrieve needs clarification; use the safest available steps or a visual
-request for the user to identify the missing control.
+request for the user to identify the missing control. Provide super summarized instructions and steps to the generate image tool.
 If any tool reports low confidence, missing model, needs_better_image, or needs_clarification,
 ask the user for the missing information or image instead of guessing. Do not retry a tool
 when the required input is absent. Never recommend unsafe servicing, bypassing safety

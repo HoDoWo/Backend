@@ -9,12 +9,15 @@ from typing import Any
 from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
+
 if __package__:
+    from .config import get_openrouter_api_key, get_openrouter_model
     from .logging_config import get_logger
     from .identify_appliance import identify_appliance
     from .image_generation import generate_overlay
     from .manual_retrieve import clarification_manual, retrieve_manual
 else:
+    from config import get_openrouter_api_key, get_openrouter_model
     from logging_config import get_logger
     from identify_appliance import identify_appliance
     from image_generation import generate_overlay
@@ -104,14 +107,9 @@ def ensure_image_overlay(
 
 
 def _get_openrouter_llm() -> ChatOpenAI:
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        logger.error("OPENROUTER_API_KEY is not configured")
-        raise RuntimeError("OPENROUTER_API_KEY is not configured")
-
     return ChatOpenAI(
-        model="openrouter/free",
-        api_key=api_key,
+        model=get_openrouter_model(),
+        api_key=get_openrouter_api_key(),
         base_url="https://openrouter.ai/api/v1",
     )
 
@@ -159,8 +157,44 @@ def build_agent(image_path: str | None = None):
         ),
     )
 
+    def panel_tool(
+        brand: str = "",
+        model: str = "",
+        language: str = "en",
+    ) -> dict[str, Any]:
+        """Detect the controls on the panel in the uploaded photo."""
+        if not image_path:
+            return {"controls": [], "error": "no panel image was uploaded"}
+
+        # Imported here on purpose: the module-level import block is also edited
+        # by the in-flight image-generation work (#10), so keeping it untouched
+        # avoids a merge conflict.
+        if __package__:
+            from .panel_analyze import PanelControlError, analyze_panel
+        else:
+            from panel_analyze import PanelControlError, analyze_panel
+
+        try:
+            controls = analyze_panel(
+                image_path, brand=brand, model=model, language=language
+            )
+        except (PanelControlError, FileNotFoundError) as exc:
+            logger.warning("Control panel analysis failed: %s", exc)
+            return {"controls": [], "error": str(exc)}
+        return {"controls": [control.model_dump(mode="json") for control in controls]}
+
+    panel = StructuredTool.from_function(
+        func=panel_tool,
+        name="control_panel_analysis",
+        description=(
+            "Detect the buttons, dials, switches and displays on the appliance "
+            "control panel in the uploaded photo. Returns one normalised bounding "
+            "box (0..1) per control, ready to be highlighted on the image."
+        ),
+    )
+
     return create_agent(
         _get_openrouter_llm(),
-        [identify, manual, overlay],
+        [identify, manual, overlay, panel],
         system_prompt=SYSTEM_PROMPT,
     )

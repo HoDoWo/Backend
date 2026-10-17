@@ -77,6 +77,25 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+# Security headers found missing by the OWASP ZAP scan of Sprint 1 (#44).
+# Registered last, so it is the outermost layer and also covers CORS,
+# authentication and rate-limit error responses.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Add security headers and keep API responses out of shared caches."""
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers[name] = value
+    # Answers depend on the user's token: no browser or proxy may store them.
+    response.headers.setdefault("Cache-Control", "no-store")
+    return response
 
 @app.get("/health")
 async def health() -> dict[str, str]:

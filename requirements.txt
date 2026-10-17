@@ -3,3 +3,5 @@ httpx
 langchain
 langchain-openai
 python-multipart
+pyjwt[crypto]
+python-dotenv

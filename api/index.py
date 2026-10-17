@@ -1,5 +1,6 @@
 from pathlib import Path
 import tempfile
+import json
 from collections.abc import Mapping
 
 from fastapi import FastAPI, HTTPException, Request
@@ -30,6 +31,21 @@ logger = get_logger(__name__)
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 
+def _find_generated_image(messages: list[object]) -> str | None:
+    """Extract the latest image-generation result from LangChain tool messages."""
+    for message in reversed(messages):
+        content = getattr(message, "content", None)
+        candidates = content if isinstance(content, list) else [content]
+        for candidate in candidates:
+            value = candidate
+            if isinstance(candidate, str):
+                try:
+                    value = json.loads(candidate)
+                except json.JSONDecodeError:
+                    continue
+            if isinstance(value, dict) and value.get("image_url"):
+                return str(value["image_url"])
+    return None
 def _client_ip(request: Request) -> str:
     """Return the caller IP, honouring the proxy header Vercel sets."""
     forwarded = request.headers.get("x-forwarded-for")
@@ -167,7 +183,13 @@ async def chat(request: Request) -> dict[str, str]:
             {"messages": [{"role": "user", "content": prompt}]}
         )
         logger.info("LangChain agent completed successfully")
-        return {"reply": result["messages"][-1].content}
+        messages = result["messages"]
+        answer = messages[-1].content
+        generated_image = ensure_image_overlay(messages, image_path, message)
+        return {
+            "reply": answer,
+            "image": generated_image or _find_generated_image(messages),
+        }
     except RuntimeError as exc:
         logger.error("LangChain agent failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc

@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
+import base64
+import mimetypes
+from pathlib import Path
 from typing import Any
 
 from langchain_openai import ChatOpenAI
@@ -41,6 +45,15 @@ def _get_openrouter_llm() -> ChatOpenAI:
         base_url="https://openrouter.ai/api/v1",
         temperature=0,
     )
+
+
+def _image_data_url(image_path: str) -> str:
+    path = Path(image_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Appliance image does not exist: {image_path}")
+    mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
 
 
 def _parse_response(content: Any) -> dict[str, Any]:
@@ -88,8 +101,9 @@ def _parse_response(content: Any) -> dict[str, Any]:
 def retrieve_manual(
     identification: dict[str, Any],
     user_request: str,
+    image_path: str | None = None,
 ) -> dict[str, Any]:
-    """Retrieve safe operating guidance using the identification result."""
+    """Retrieve safe operating guidance using identification and the original image."""
     if not isinstance(identification, dict):
         raise ValueError("identification must be an object returned by appliance identification")
     if not REQUIRED_IDENTIFICATION_FIELDS.issubset(identification):
@@ -103,6 +117,21 @@ def retrieve_manual(
         identification.get("appliance_name"),
         identification.get("model"),
     )
+    human_content: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": (
+                "Appliance identification result:\n"
+                f"{json.dumps(identification, ensure_ascii=True)}\n\n"
+                f"User request:\n{user_request}"
+            ),
+        }
+    ]
+    if image_path:
+        human_content.append(
+            {"type": "image_url", "image_url": {"url": _image_data_url(image_path)}}
+        )
+
     response = _get_openrouter_llm().invoke(
         [
             (
@@ -124,14 +153,27 @@ def retrieve_manual(
             ),
             (
                 "human",
-                (
-                    "Appliance identification result:\n"
-                    f"{json.dumps(identification, ensure_ascii=True)}\n\n"
-                    f"User request:\n{user_request}"
-                ),
+                human_content,
             ),
         ]
     )
     result = _parse_response(response.content)
-    logger.info("Manual retrieval completed successfully")
+    logger.info(f"Manual retrieval completed successfully: {result}")
     return result
+
+
+def clarification_manual(reason: str) -> dict[str, Any]:
+    """Build safe fallback guidance when an agent supplies incomplete context."""
+    logger.warning("Manual retrieval requires clarification: %s", reason)
+    return {
+        "summary": reason,
+        "steps": [
+            "Inspect the original appliance image and identify the relevant control.",
+            "Ask the user to confirm the control or provide the brand and model.",
+        ],
+        "warnings": [
+            "Do not press or turn an unlabeled control until the appliance model is confirmed."
+        ],
+        "needs_clarification": True,
+        "confidence": 0,
+    }

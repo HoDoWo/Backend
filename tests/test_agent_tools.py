@@ -12,7 +12,6 @@ from api import langchain_setup
 from api.panel_analyze import Control, ControlBox, ControlType, PanelControlError
 
 EXPECTED_TOOLS = {
-    "appliance_identification",
     "manual_retrieve",
     "image_generation",
     "control_panel_analysis",

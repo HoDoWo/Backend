@@ -6,3 +6,4 @@ python-multipart
 pyjwt[crypto]
 python-dotenv
 slowapi
+firebase-admin

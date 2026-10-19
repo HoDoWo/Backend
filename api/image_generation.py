@@ -86,8 +86,8 @@ def _create_task(image_url: str, instructions: str, steps: list[str]) -> str:
     )
     prompt = (
         "Just generate same image but with overlay step by step instructions. PRESERVE exact same base image. Just add the instructions as an overlay, point to the exact buttons or dials to use. Do not invent or alter controls. The base image should remain unchanged.\n\n"
-        #f"Instructions:\n{instructions}\n\n"
-        #f"Steps:\n{numbered_steps}"
+        f"Instructions:\n{instructions}\n\n"
+        f"Steps:\n{numbered_steps}"
     )
     logger.info("Creating Kie task for image overlay generation with prompt: %s", prompt)
     payload = {
@@ -95,7 +95,7 @@ def _create_task(image_url: str, instructions: str, steps: list[str]) -> str:
         "model": "gpt-image-2-5-sunburst-image-to-image",
         "input": {
             "prompt": prompt,
-            "image_input": [image_url],
+            "input_urls": [image_url],
             "aspect_ratio": "auto",
             "resolution": "1K",
             "output_format": "png",

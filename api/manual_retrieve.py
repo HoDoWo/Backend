@@ -12,23 +12,17 @@ from typing import Any
 from langchain_openai import ChatOpenAI
 
 if __package__:
-    from .config import get_openrouter_api_key, get_openrouter_model
+    from .config import get_openrouter_api_key, get_openrouter_model, get_openrouter_llm
     from .logging_config import get_logger
 else:
-    from config import get_openrouter_api_key, get_openrouter_model
+    from config import get_openrouter_api_key, get_openrouter_model, get_openrouter_llm
     from logging_config import get_logger
+
+_get_openrouter_llm = get_openrouter_llm
 
 
 logger = get_logger(__name__)
 
-REQUIRED_IDENTIFICATION_FIELDS = {
-    "appliance_name",
-    "brand",
-    "model",
-    "confidence",
-    "visible_evidence",
-    "needs_better_image",
-}
 REQUIRED_MANUAL_FIELDS = {
     "summary",
     "steps",
@@ -37,14 +31,6 @@ REQUIRED_MANUAL_FIELDS = {
     "confidence",
 }
 
-
-def _get_openrouter_llm() -> ChatOpenAI:
-    return ChatOpenAI(
-        model=get_openrouter_model(),
-        api_key=get_openrouter_api_key(),
-        base_url="https://openrouter.ai/api/v1",
-        temperature=0,
-    )
 
 
 def _image_data_url(image_path: str) -> str:
@@ -99,31 +85,31 @@ def _parse_response(content: Any) -> dict[str, Any]:
 
 
 def retrieve_manual(
-    identification: dict[str, Any],
     user_request: str,
     image_path: str | None = None,
+    brand: str | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
-    """Retrieve safe operating guidance using identification and the original image."""
-    if not isinstance(identification, dict):
-        raise ValueError("identification must be an object returned by appliance identification")
-    if not REQUIRED_IDENTIFICATION_FIELDS.issubset(identification):
-        raise ValueError("identification is missing required appliance fields")
+    """Identify the appliance and retrieve safe guidance in one multimodal call."""
     if not isinstance(user_request, str) or not user_request.strip():
         raise ValueError("user_request must not be empty")
 
     logger.debug(
-        "Retrieving manual guidance for %s %s %s",
-        identification.get("brand"),
-        identification.get("appliance_name"),
-        identification.get("model"),
+        "Retrieving manual guidance with optional hints brand=%s model=%s",
+        brand,
+        model,
     )
+    hints = {
+        "brand": brand or None,
+        "model": model or None,
+    }
     human_content: list[dict[str, Any]] = [
         {
             "type": "text",
             "text": (
-                "Appliance identification result:\n"
-                f"{json.dumps(identification, ensure_ascii=True)}\n\n"
-                f"User request:\n{user_request}"
+                f"User request:\n{user_request}\n\n"
+                "Optional appliance hints (verify these against the image; do not "
+                f"treat them as authoritative):\n{json.dumps(hints, ensure_ascii=True)}"
             ),
         }
     ]
@@ -138,17 +124,20 @@ def retrieve_manual(
                 "system",
                 (
                     "You are a home-appliance manual retrieval tool. Use the supplied "
-                    "appliance identification result as the source of truth for the "
-                    "device name, brand, model, visible evidence and confidence. "
-                    "Answer the user's requested operation with safe, model-specific "
-                    "instructions. Do not invent button names or model details. If the "
-                    "model is null, confidence is below 0.7, needs_better_image is true, "
-                    "or the request cannot be answered reliably, set "
-                    "needs_clarification=true and explain what is missing. Never advise "
-                    "opening the appliance, bypassing safety features, or unsafe repairs. "
-                    "Respond ONLY with JSON containing: summary (string), steps "
-                    "(array of strings), warnings (array of strings), "
-                    "needs_clarification (boolean), and confidence (number from 0 to 1)."
+                    "user request and original appliance image to first identify the "
+                    "appliance, brand and model, then answer the requested operation "
+                    "with safe, model-specific instructions. Optional brand/model "
+                    "hints are only clues and must be verified against the image. "
+                    "Do not invent button names or model details. If the image is "
+                    "unclear, the model cannot be identified, or the request cannot "
+                    "be answered reliably, set needs_clarification=true and explain "
+                    "what is missing. Never advise opening the appliance, bypassing "
+                    "safety features, or unsafe repairs. Respond ONLY with JSON "
+                    "containing appliance_name, brand, model, identification_confidence, "
+                    "visible_evidence, needs_better_image, summary, steps (array of "
+                    "strings), warnings (array of strings), needs_clarification "
+                    "(boolean), and confidence (number from 0 to 1). Use null for "
+                    "unknown appliance fields."
                 ),
             ),
             (

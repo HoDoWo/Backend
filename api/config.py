@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
 
 # Load a local .env when present. Vercel injects the values itself, so this is
 # a no-op there. Existing variables are never overwritten.
@@ -100,3 +101,11 @@ def get_openrouter_model() -> str:
     """Return the OpenRouter model id, falling back to the free default."""
     model = get_optional_env("OPENROUTER_MODEL", DEFAULT_OPENROUTER_MODEL)
     return model or DEFAULT_OPENROUTER_MODEL
+
+def get_openrouter_llm() -> ChatOpenAI:
+    return ChatOpenAI(
+        model=get_openrouter_model(),
+        api_key=get_openrouter_api_key(),
+        base_url="https://openrouter.ai/api/v1",
+        temperature=0,
+    )

@@ -5,17 +5,6 @@ import pytest
 from api import manual_retrieve as manual_module
 
 
-def _identification():
-    return {
-        "appliance_name": "washing machine",
-        "brand": "HoDoWo",
-        "model": "HW-100",
-        "confidence": 0.92,
-        "visible_evidence": "Brand and model label visible",
-        "needs_better_image": False,
-    }
-
-
 class FakeResponse:
     def __init__(self, content):
         self.content = content
@@ -41,16 +30,21 @@ def _manual_result():
     }
 
 
-def test_retrieve_manual_uses_identification_result(monkeypatch):
+def test_retrieve_manual_uses_user_request_and_optional_hints(monkeypatch):
     model = FakeModel(FakeResponse(json.dumps(_manual_result())))
     monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
 
-    result = manual_module.retrieve_manual(_identification(), "How do I run a quick wash?")
+    result = manual_module.retrieve_manual(
+        "How do I run a quick wash?",
+        brand="HoDoWo",
+        model="HW-100",
+    )
 
     assert result == _manual_result()
     human_text = model.messages[1][1][0]["text"]
-    assert json.dumps(_identification(), ensure_ascii=True) in human_text
     assert "How do I run a quick wash?" in human_text
+    assert '"brand": "HoDoWo"' in human_text
+    assert '"model": "HW-100"' in human_text
 
 
 def test_retrieve_manual_sends_original_image(monkeypatch, tmp_path):
@@ -60,7 +54,7 @@ def test_retrieve_manual_sends_original_image(monkeypatch, tmp_path):
     monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
 
     manual_module.retrieve_manual(
-        _identification(), "How do I run a quick wash?", str(image)
+        "How do I run a quick wash?", str(image)
     )
 
     human_content = model.messages[1][1]
@@ -72,12 +66,7 @@ def test_retrieve_manual_accepts_json_code_fence(monkeypatch):
     model = FakeModel(FakeResponse(f"```json\n{json.dumps(_manual_result())}\n```"))
     monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
 
-    assert manual_module.retrieve_manual(_identification(), "How do I start it?") == _manual_result()
-
-
-def test_retrieve_manual_rejects_incomplete_identification(monkeypatch):
-    with pytest.raises(ValueError, match="missing required appliance fields"):
-        manual_module.retrieve_manual({"brand": "HoDoWo"}, "How do I start it?")
+    assert manual_module.retrieve_manual("How do I start it?") == _manual_result()
 
 
 def test_retrieve_manual_rejects_invalid_response(monkeypatch):
@@ -85,4 +74,4 @@ def test_retrieve_manual_rejects_invalid_response(monkeypatch):
     monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
 
     with pytest.raises(RuntimeError, match="missing required fields"):
-        manual_module.retrieve_manual(_identification(), "How do I start it?")
+        manual_module.retrieve_manual("How do I start it?")

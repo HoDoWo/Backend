@@ -1,16 +1,19 @@
+from typing import Any
+
+import auth
 import fastapi
-import langchain_protocol
-from logging import getLogger
-import firebase_store, index, schemas
+import firebase_store
+import logging_config
+import schemas
 
 rate_router = fastapi.APIRouter()
-logger = getLogger(__name__)
+logger = logging_config.get_logger(__name__)
 @rate_router.post("/api/manuals/{manual_id}/rate", response_model=dict)
 async def rate_manual(
     manual_id: str, req: schemas.RatingRequest, request: fastapi.Request
-) -> dict[str, langchain_protocol.Any]:
+) -> dict[str, Any]:
     """Toggle or change the authenticated user's like/dislike rating."""
-    user = index.get_current_user(request)
+    user = auth.get_current_user(request)
     uid = str(user.get("uid") or user.get("sub") or "").strip()
     if not uid:
         raise fastapi.HTTPException(status_code=401, detail="authenticated user id is missing")

@@ -1,34 +1,44 @@
 import json
 import pathlib
 
-import fastapi
-import langchain_protocol
-from fastapi import HTTPException, Request, datastructures, responses, types
-from index import ai_rate_limit, logger
+import types
+from typing import Any
 
-from api import langchain_setup, request_helpers, response_formatting
-from api.endpoints import chat
+import config
+import fastapi
+import langchain_setup
+import logging_config
+import reinforcement
+import request_helpers
+import response_formatting
+from fastapi import HTTPException, Request, datastructures, responses
+from endpoints import chat
+
+logger = logging_config.get_logger(__name__)
 
 chat_stream_router = fastapi.APIRouter()
 
 @chat_stream_router.post("/api/chat/stream")
-@ai_rate_limit
+@config.ai_rate_limit
 async def chat_stream(request: Request):
     """Stream tool execution steps dynamically and stream only the final agent response via SSE."""
     image: datastructures.UploadFile | None = None
     image_path: str | None = None
-    history_raw: langchain_protocol.Any = None
+    history_raw: Any = None
+    appliance_raw: Any = None
 
     content_type = request.headers.get("content-type", "")
     if content_type.startswith("multipart/form-data") or content_type.startswith("application/x-www-form-urlencoded"):
         form = await request.form()
         message = form.get("message") or form.get("text") or ""
         history_raw = form.get("history")
+        appliance_raw = form.get("appliance")
         image = request_helpers.find_uploaded_image(form)
     else:
         body = await request.json()
         message = body.get("message") or body.get("text") or ""
         history_raw = body.get("history")
+        appliance_raw = body.get("appliance")
 
     if not isinstance(message, str):
         raise HTTPException(status_code=422, detail="message must be text")
@@ -52,6 +62,11 @@ async def chat_stream(request: Request):
             prompt = message or "Identify, describe and provide instructions for the appliance in the uploaded image."
             if image_path is not None:
                 prompt += f"\nUploaded image path: {image_path}"
+
+            # Rated guides of the same appliance (#40).
+            prompt = reinforcement.add_to_prompt(
+                prompt, reinforcement.appliance_name_from(appliance_raw)
+            )
 
             conversation_messages = request_helpers.parse_history(history_raw)
             conversation_messages.append({"role": "user", "content": prompt})

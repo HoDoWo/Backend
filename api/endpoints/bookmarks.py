@@ -1,18 +1,21 @@
+from typing import Any
+
+import auth
 import fastapi
 import firebase_store
-import index
-import langchain_protocol
+import logging_config
 import schemas
-from fastapi import logger
+
+logger = logging_config.get_logger(__name__)
 
 bookmark_router = fastapi.APIRouter()
 
 @bookmark_router.patch("/api/manuals/{manual_id}/bookmark", response_model=dict)
 async def toggle_bookmark(
     manual_id: str, req: schemas.BookmarkRequest, request: fastapi.Request
-) -> dict[str, langchain_protocol.Any]:
+) -> dict[str, Any]:
     """Set the bookmark state for a manual owned by the authenticated user."""
-    user = index.get_current_user(request)
+    user = auth.get_current_user(request)
     uid = str(user.get("uid") or user.get("sub") or "").strip()
     if not uid:
         raise fastapi.HTTPException(status_code=401, detail="authenticated user id is missing")

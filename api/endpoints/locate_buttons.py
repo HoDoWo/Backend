@@ -1,12 +1,12 @@
-import logging
 import pathlib
 
 import fastapi
 import config
-import panel_analyze
+import logging_config
+import panel_analyze as panel_module
 import request_helpers
 
-logger = logging.getLogger(__name__)
+logger = logging_config.get_logger(__name__)
 
 locate_router = fastapi.APIRouter()
 
@@ -35,10 +35,10 @@ async def panel_locate(request: fastapi.Request) -> dict[str, dict[str, float] |
 
     image_path = await request_helpers.save_uploaded_image(image, "appliance.jpg")
     try:
-        box = panel_analyze.locate_panel(image_path, brand=brand, model=model)
+        box = panel_module.locate_panel(image_path, brand=brand, model=model)
         logger.info("Panel location found a panel: %s", box is not None)
         return {"box": box.model_dump(mode="json") if box else None}
-    except (panel_analyze.PanelControlError, FileNotFoundError) as exc:
+    except (panel_module.PanelControlError, FileNotFoundError) as exc:
         logger.error("Panel location failed: %s", exc)
         raise fastapi.HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
@@ -68,10 +68,10 @@ async def panel_analyze(request: fastapi.Request) -> dict[str, list[dict[str, ob
 
     image_path = await request_helpers.save_uploaded_image(image, "panel.jpg")
     try:
-        controls = panel_analyze.analyze_panel(image_path, brand=brand, model=model, language=language)
+        controls = panel_module.analyze_panel(image_path, brand=brand, model=model, language=language)
         logger.info("Panel analysis detected %s controls", len(controls))
         return {"controls": [control.model_dump(mode="json") for control in controls]}
-    except (panel_analyze.PanelControlError, FileNotFoundError) as exc:
+    except (panel_module.PanelControlError, FileNotFoundError) as exc:
         logger.error("Panel analysis failed: %s", exc)
         raise fastapi.HTTPException(status_code=502, detail=str(exc)) from exc
     finally:

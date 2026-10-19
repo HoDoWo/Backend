@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from api import langchain_setup
-from api.panel_analyze import Control, ControlBox, ControlType, PanelControlError
+import langchain_setup
+from panel_analyze import Control, ControlBox, ControlType, PanelControlError
 
 EXPECTED_TOOLS = {
     "manual_retrieve",
@@ -61,7 +61,7 @@ def test_control_panel_tool_returns_normalised_controls(monkeypatch):
         assert (brand, model, language) == ("Bosch", "WAT", "es")
         return [_sample_control()]
 
-    monkeypatch.setattr("api.panel_analyze.analyze_panel", fake_analyze_panel)
+    monkeypatch.setattr("panel_analyze.analyze_panel", fake_analyze_panel)
     tool = _agent_tools(monkeypatch)["control_panel_analysis"]
 
     result = tool.func(brand="Bosch", model="WAT", language="es")
@@ -87,7 +87,7 @@ def test_control_panel_tool_without_an_image_returns_an_error(monkeypatch):
         called = True
         return []
 
-    monkeypatch.setattr("api.panel_analyze.analyze_panel", fake_analyze_panel)
+    monkeypatch.setattr("panel_analyze.analyze_panel", fake_analyze_panel)
     tool = _agent_tools(monkeypatch, image_path=None)["control_panel_analysis"]
 
     result = tool.func()
@@ -101,7 +101,7 @@ def test_control_panel_tool_degrades_when_analysis_fails(monkeypatch):
     def boom(*args: Any, **kwargs: Any) -> list[Control]:
         raise PanelControlError("the model returned an unusable control list")
 
-    monkeypatch.setattr("api.panel_analyze.analyze_panel", boom)
+    monkeypatch.setattr("panel_analyze.analyze_panel", boom)
     tool = _agent_tools(monkeypatch)["control_panel_analysis"]
 
     result = tool.func()

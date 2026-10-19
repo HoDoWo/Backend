@@ -3,7 +3,6 @@ import json
 import auth
 import config
 import fastapi
-import index
 from fastapi import HTTPException, params
 
 

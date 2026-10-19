@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any
+
+# Names used when the appliance was not recognised: guides saved under them
+# belong to different appliances, so they are never grouped together.
+GENERIC_APPLIANCE_NAMES = frozenset({"", "appliance", "household-appliance"})
 
 
 class FirebaseConfigurationError(RuntimeError):
@@ -41,6 +47,16 @@ def get_firestore_client():
     return firestore.client()
 
 
+def appliance_key(appliance_name: str | None) -> str:
+    """Normalised key that groups the manuals of the same appliance (#40).
+
+    "Bosch Washing machine (WAN28)" -> "bosch-washing-machine-wan28".
+    Returns "" for missing or generic names such as "Household Appliance".
+    """
+    key = re.sub(r"[^a-z0-9]+", "-", str(appliance_name or "").lower()).strip("-")
+    return "" if key in GENERIC_APPLIANCE_NAMES else key
+
+
 def _manual_ref(manual_id: str):
     return get_firestore_client().collection("manuals").document(manual_id)
 
@@ -50,10 +66,12 @@ def save_manual(user_uid: str, manual: dict[str, Any]) -> str:
     if not user_uid:
         raise ValueError("authenticated user uid is required")
     ref = get_firestore_client().collection("manuals").document()
+    appliance_name = manual.get("appliance_name") or "Household Appliance"
     ref.set(
         {
             "user_uid": user_uid,
-            "appliance_name": manual.get("appliance_name") or "Household Appliance",
+            "appliance_name": appliance_name,
+            "appliance_key": appliance_key(appliance_name),
             "issue_title": manual.get("issue_title") or "Appliance Guide",
             "overview": manual.get("overview") or manual.get("reply") or "",
             "steps": manual.get("steps") or [],
@@ -96,3 +114,52 @@ def set_rating(user_uid: str, manual_id: str, rating: int) -> int:
         return 0
     rating_ref.set({"user_uid": user_uid, "rating": rating})
     return rating
+
+
+def _rating_score(manual_ref) -> int:
+    """Sum of the like (+1) and dislike (-1) votes stored under a manual."""
+    total = 0
+    for vote in manual_ref.collection("ratings").stream():
+        value = (vote.to_dict() or {}).get("rating")
+        if value in (-1, 1):
+            total += value
+    return total
+
+
+def find_rated_manuals(appliance_name: str | None, limit: int = 20) -> list[dict[str, Any]]:
+    """Manuals of the same appliance that users rated, newest first (#40).
+
+    Reads the manuals of every user (the backend uses the admin SDK), matching
+    on ``appliance_key``. Manuals saved before that field existed are found by
+    their exact ``appliance_name``. Unrated manuals (score 0) are left out.
+    """
+    key = appliance_key(appliance_name)
+    if not key:
+        return []
+
+    from google.cloud.firestore_v1.base_query import FieldFilter
+
+    manuals = get_firestore_client().collection("manuals")
+    snapshots = list(
+        manuals.where(filter=FieldFilter("appliance_key", "==", key)).limit(limit).stream()
+    )
+    if not snapshots:
+        snapshots = list(
+            manuals.where(filter=FieldFilter("appliance_name", "==", appliance_name))
+            .limit(limit)
+            .stream()
+        )
+
+    rated = []
+    for snapshot in snapshots:
+        score = _rating_score(snapshot.reference)
+        if score:
+            rated.append({**(snapshot.to_dict() or {}), "id": snapshot.id, "score": score})
+
+    oldest = datetime.min.replace(tzinfo=timezone.utc)
+
+    def created(manual: dict[str, Any]) -> datetime:
+        value = manual.get("created_at")
+        return value if isinstance(value, datetime) else oldest
+
+    return sorted(rated, key=created, reverse=True)

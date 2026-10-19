@@ -2,28 +2,38 @@ import pathlib
 import sys
 from typing import Any
 
-from endpoints import bookmarks, environmental_tip, locate_buttons
-import auth
-import config
-import firebase_store
-import logging_config
-import schemas
-import slowapi
-from endpoints import rating
-from fastapi import FastAPI, HTTPException, Request, responses, status
-from fastapi.middleware import cors
-from slowapi import errors, util
-
-# Force Python/Vercel to recognize the 'api' directory BEFORE importing local modules
+# Vercel runs this file with api/ as the import root, while the tests import it
+# from the repository root. Put api/ on sys.path BEFORE the local imports so
+# every module is always imported once, under the same top-level name.
 API_DIR = pathlib.Path(__file__).resolve().parent
 if str(API_DIR) not in sys.path:
     sys.path.insert(0, str(API_DIR))
+
+import auth  # noqa: E402
+import config  # noqa: E402
+import firebase_store  # noqa: E402
+import logging_config  # noqa: E402
+import schemas  # noqa: E402
+import slowapi  # noqa: E402
+from endpoints import (  # noqa: E402
+    bookmarks,
+    chat,
+    chat_stream,
+    environmental_tip,
+    locate_buttons,
+    rating,
+)
+from fastapi import FastAPI, HTTPException, Request, responses  # noqa: E402
+from fastapi.middleware import cors  # noqa: E402
+from slowapi import errors  # noqa: E402
 
 logger = logging_config.get_logger(__name__)
 
 settings = config.get_settings()
 app = FastAPI(title="HoDoWo backend")
 
+app.include_router(chat.chat_router)
+app.include_router(chat_stream.chat_stream_router)
 app.include_router(rating.rate_router)
 app.include_router(bookmarks.bookmark_router)
 app.include_router(locate_buttons.locate_router)

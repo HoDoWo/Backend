@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from api import image_generation as image_module
+import image_generation as image_module
 
 
 class FakeResponse:

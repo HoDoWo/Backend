@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from matplotlib import text
 
 if __package__:
     from .image_generation import _image_data_url

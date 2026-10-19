@@ -1,4 +1,4 @@
-from api import langchain_setup as langchain_module
+import langchain_setup as langchain_module
 
 
 def test_ensure_image_overlay_runs_missing_workflow(monkeypatch, tmp_path):

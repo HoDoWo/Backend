@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from api import manual_retrieve as manual_module
+import manual_retrieve as manual_module
 
 
 class FakeResponse:

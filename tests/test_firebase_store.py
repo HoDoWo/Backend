@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from api import firebase_store
+import firebase_store
 
 
 class FakeSnapshot:

@@ -11,12 +11,10 @@ from typing import Any
 import config
 import logging_config
 
-from api import config, logging_config
-
-_get_openrouter_llm = config.config.get_openrouter_llm
+_get_openrouter_llm = config.get_openrouter_llm
 
 
-logger = logging_config.logging_config.get_logger(__name__)
+logger = logging_config.get_logger(__name__)
 
 REQUIRED_MANUAL_FIELDS = {
     "summary",

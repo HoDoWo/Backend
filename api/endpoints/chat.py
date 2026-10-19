@@ -1,41 +1,43 @@
 import pathlib
 from typing import Any
 
+import auth
+import config
 import fastapi
+import firebase_store
 import langchain_setup
+import logging_config
+import reinforcement
 import request_helpers
 import response_formatting
-from index import (
-    ai_rate_limit,
-    app,
-    get_current_user,
-    logger,
-)
 from starlette import datastructures
 
-from api import firebase_store
+logger = logging_config.get_logger(__name__)
 
 
 chat_router = fastapi.APIRouter()
 
 @chat_router.post("/api/chat")
-@ai_rate_limit
+@config.ai_rate_limit
 async def chat(request: fastapi.Request) -> dict[str, Any]:
     """Run every text and/or image request through the LangChain agent."""
     image: datastructures.UploadFile | None = None
     image_path: str | None = None
     history_raw: Any = None
+    appliance_raw: Any = None
 
     content_type = request.headers.get("content-type", "")
     if content_type.startswith("multipart/form-data") or content_type.startswith("application/x-www-form-urlencoded"):
         form = await request.form()
         message = form.get("message") or form.get("text") or ""
         history_raw = form.get("history")
+        appliance_raw = form.get("appliance")
         image = request_helpers.find_uploaded_image(form)
     else:
         body = await request.json()
         message = body.get("message") or body.get("text") or ""
         history_raw = body.get("history")
+        appliance_raw = body.get("appliance")
 
     if not isinstance(message, str):
         raise fastapi.HTTPException(status_code=422, detail="message must be text")
@@ -54,6 +56,11 @@ async def chat(request: fastapi.Request) -> dict[str, Any]:
         prompt = message or "Identify, describe and provide instructions for the appliance in the uploaded image."
         if image_path is not None:
             prompt += f"\nUploaded image path: {image_path}"
+
+        # Rated guides of the same appliance (#40).
+        prompt = reinforcement.add_to_prompt(
+            prompt, reinforcement.appliance_name_from(appliance_raw)
+        )
 
         conversation_messages = request_helpers.parse_history(history_raw)
         conversation_messages.append({"role": "user", "content": prompt})
@@ -84,10 +91,10 @@ def _persist_generated_manual(
     if not formatted.get("is_manual"):
         return formatted
     try:
-        user = get_current_user(request)
+        user = auth.get_current_user(request)
     except fastapi.HTTPException:
         user = {}
-    uid = str(user.get("uid") or user.get("sub") or request.headers.get("x-user-id") or "").strip()
+    uid = str(user.get("uid") or user.get("sub") or "").strip()
     if not uid:
         logger.error("Cannot persist manual because JWT has no uid or sub claim")
         return formatted

@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from api.index import app
+from index import app
 from jwt_helpers import bearer, make_token
 
 
@@ -21,8 +21,8 @@ class FakeAgent:
 
 def test_chat_sends_text_to_langchain_agent(monkeypatch):
     agent = FakeAgent()
-    monkeypatch.setattr("api.index.build_agent", lambda image_path: agent)
-    monkeypatch.setattr("api.index.ensure_image_overlay", lambda *args: None)
+    monkeypatch.setattr("langchain_setup.build_agent", lambda image_path: agent)
+    monkeypatch.setattr("langchain_setup.ensure_image_overlay", lambda *args: None)
 
     result = client.post("/api/chat", json={"message": "Hello"})
 
@@ -33,8 +33,8 @@ def test_chat_sends_text_to_langchain_agent(monkeypatch):
 
 def test_chat_passes_conversation_history_to_langchain_agent(monkeypatch):
     agent = FakeAgent(response="You like coffee!")
-    monkeypatch.setattr("api.index.build_agent", lambda image_path: agent)
-    monkeypatch.setattr("api.index.ensure_image_overlay", lambda *args: None)
+    monkeypatch.setattr("langchain_setup.build_agent", lambda image_path: agent)
+    monkeypatch.setattr("langchain_setup.ensure_image_overlay", lambda *args: None)
 
     history = [
         {"role": "user", "content": "I like coffee"},
@@ -52,8 +52,8 @@ def test_chat_passes_conversation_history_to_langchain_agent(monkeypatch):
 
 def test_chat_parses_json_string_history_from_form_data(monkeypatch):
     agent = FakeAgent()
-    monkeypatch.setattr("api.index.build_agent", lambda image_path: agent)
-    monkeypatch.setattr("api.index.ensure_image_overlay", lambda *args: None)
+    monkeypatch.setattr("langchain_setup.build_agent", lambda image_path: agent)
+    monkeypatch.setattr("langchain_setup.ensure_image_overlay", lambda *args: None)
 
     result = client.post(
         "/api/chat",
@@ -79,8 +79,8 @@ def test_chat_accepts_image_without_text(monkeypatch):
         captured["image_path"] = image_path
         return agent
 
-    monkeypatch.setattr("api.index.build_agent", fake_build_agent)
-    monkeypatch.setattr("api.index.ensure_image_overlay", lambda *args: None)
+    monkeypatch.setattr("langchain_setup.build_agent", fake_build_agent)
+    monkeypatch.setattr("langchain_setup.ensure_image_overlay", lambda *args: None)
 
     result = client.post(
         "/api/chat",
@@ -95,8 +95,8 @@ def test_chat_accepts_image_without_text(monkeypatch):
 
 def test_chat_accepts_text_and_image(monkeypatch):
     agent = FakeAgent()
-    monkeypatch.setattr("api.index.build_agent", lambda image_path: agent)
-    monkeypatch.setattr("api.index.ensure_image_overlay", lambda *args: None)
+    monkeypatch.setattr("langchain_setup.build_agent", lambda image_path: agent)
+    monkeypatch.setattr("langchain_setup.ensure_image_overlay", lambda *args: None)
 
     result = client.post(
         "/api/chat",
@@ -117,8 +117,8 @@ def test_chat_accepts_image_with_nonstandard_field_name(monkeypatch):
         captured["image_path"] = image_path
         return agent
 
-    monkeypatch.setattr("api.index.build_agent", fake_build_agent)
-    monkeypatch.setattr("api.index.ensure_image_overlay", lambda *args: None)
+    monkeypatch.setattr("langchain_setup.build_agent", fake_build_agent)
+    monkeypatch.setattr("langchain_setup.ensure_image_overlay", lambda *args: None)
 
     result = client.post(
         "/api/chat",
@@ -133,7 +133,7 @@ def test_chat_accepts_image_with_nonstandard_field_name(monkeypatch):
 
 
 def test_chat_requires_text_or_image(monkeypatch):
-    monkeypatch.setattr("api.index.build_agent", lambda image_path: FakeAgent())
+    monkeypatch.setattr("langchain_setup.build_agent", lambda image_path: FakeAgent())
 
     result = client.post("/api/chat", json={})
 
@@ -161,8 +161,8 @@ def test_chat_returns_generated_image_with_answer(monkeypatch):
                 ]
             }
 
-    monkeypatch.setattr("api.index.build_agent", lambda image_path: ImageAgent())
-    monkeypatch.setattr("api.index.ensure_image_overlay", lambda *args: None)
+    monkeypatch.setattr("langchain_setup.build_agent", lambda image_path: ImageAgent())
+    monkeypatch.setattr("langchain_setup.ensure_image_overlay", lambda *args: None)
 
     result = client.post("/api/chat", json={"message": "How do I start it?"})
 
@@ -174,7 +174,7 @@ def test_chat_returns_generated_image_with_answer(monkeypatch):
 
 
 def test_format_chat_response_creates_manual_guide_card_from_tool_result():
-    from api.index import _format_chat_response
+    from response_formatting import format_chat_response as _format_chat_response
 
     class ManualMessage:
         content = (
@@ -211,7 +211,7 @@ def test_format_chat_response_creates_manual_guide_card_from_tool_result():
 
 
 def test_format_chat_response_keeps_conversational_messages_compact():
-    from api.index import _format_chat_response
+    from response_formatting import format_chat_response as _format_chat_response
 
     class ConversationMessage:
         content = "You can attach a photo of the appliance and ask a question."

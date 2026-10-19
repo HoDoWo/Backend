@@ -3,8 +3,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from api import config
-from api.index import app
+import config
+from index import app
 from jwt_helpers import bearer, make_token
 
 client = TestClient(app)
@@ -17,7 +17,7 @@ class FakeAgent:
 
 @pytest.fixture(autouse=True)
 def fake_agent(monkeypatch):
-    monkeypatch.setattr("api.index.build_agent", lambda image_path: FakeAgent())
+    monkeypatch.setattr("langchain_setup.build_agent", lambda image_path: FakeAgent())
 
 
 def _rate_limit_per_minute() -> int:

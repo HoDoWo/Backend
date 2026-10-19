@@ -31,8 +31,6 @@ import fastapi
 import jwt
 import logging_config
 
-import logging_config
-
 logger = logging_config.get_logger(__name__)
 
 # Paths reachable without a token. CORS preflight (OPTIONS) is always allowed.

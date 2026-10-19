@@ -5,9 +5,9 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from api import panel_analyze as panel_module
-from api.index import app
-from api.panel_analyze import (
+import panel_analyze as panel_module
+from index import app
+from panel_analyze import (
     MAX_CONTROLS,
     Control,
     ControlBox,
@@ -215,7 +215,7 @@ def _fake_controls():
 
 
 def test_panel_endpoint_returns_controls(monkeypatch):
-    monkeypatch.setattr("api.index.analyze_panel", lambda *args, **kwargs: _fake_controls())
+    monkeypatch.setattr("panel_analyze.analyze_panel", lambda *args, **kwargs: _fake_controls())
 
     response = client.post(
         "/api/panel/analyze",
@@ -244,7 +244,7 @@ def test_panel_endpoint_requires_auth():
 
 
 def test_panel_endpoint_returns_empty_list_for_a_non_panel(monkeypatch):
-    monkeypatch.setattr("api.index.analyze_panel", lambda *args, **kwargs: [])
+    monkeypatch.setattr("panel_analyze.analyze_panel", lambda *args, **kwargs: [])
 
     response = client.post(
         "/api/panel/analyze",
@@ -260,7 +260,7 @@ def test_panel_endpoint_returns_502_when_the_model_fails(monkeypatch):
     def boom(*args, **kwargs):
         raise PanelControlError("panel analysis returned invalid JSON")
 
-    monkeypatch.setattr("api.index.analyze_panel", boom)
+    monkeypatch.setattr("panel_analyze.analyze_panel", boom)
 
     response = client.post(
         "/api/panel/analyze",
@@ -386,7 +386,7 @@ def test_locate_panel_without_image_returns_none():
 
 def test_panel_locate_endpoint_returns_the_box(monkeypatch):
     monkeypatch.setattr(
-        "api.index.locate_panel",
+        "panel_analyze.locate_panel",
         lambda *args, **kwargs: ControlBox(x=0.1, y=0.2, w=0.6, h=0.5),
     )
 
@@ -402,7 +402,7 @@ def test_panel_locate_endpoint_returns_the_box(monkeypatch):
 
 
 def test_panel_locate_endpoint_returns_null_without_a_panel(monkeypatch):
-    monkeypatch.setattr("api.index.locate_panel", lambda *args, **kwargs: None)
+    monkeypatch.setattr("panel_analyze.locate_panel", lambda *args, **kwargs: None)
 
     response = client.post(
         "/api/panel/locate",
@@ -447,7 +447,7 @@ def test_panel_locate_endpoint_returns_502_when_the_model_fails(monkeypatch):
     def boom(*args, **kwargs):
         raise PanelControlError("panel location returned invalid JSON")
 
-    monkeypatch.setattr("api.index.locate_panel", boom)
+    monkeypatch.setattr("panel_analyze.locate_panel", boom)
 
     response = client.post(
         "/api/panel/locate",

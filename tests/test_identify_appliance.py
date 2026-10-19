@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from api import identify_appliance as identify_module
+import identify_appliance as identify_module
 
 
 def _result():

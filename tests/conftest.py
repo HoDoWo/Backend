@@ -28,9 +28,9 @@ def jwt_env(monkeypatch):
 @pytest.fixture(autouse=True)
 def reset_rate_limiter():
     """Clear the in-memory rate-limit counters so tests are independent."""
-    from api import config, index
+    import config
 
     config.get_settings.cache_clear()
-    index.limiter.reset()
+    config.limiter.reset()
     yield
-    index.limiter.reset()
+    config.limiter.reset()

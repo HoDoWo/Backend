@@ -61,17 +61,44 @@ def _parse_response(content: Any) -> dict[str, Any]:
         raise RuntimeError("Appliance identification returned a non-text response")
 
     text = content.strip()
-    if text.startswith("```"):
-        text = text.removeprefix("```json").removeprefix("```").strip()
-        if text.endswith("```"):
-            text = text[:-3].strip()
+
+    if "User Safety" in text or not (text.startswith("{") or "```" in text):
+        logger.warning(f"Model returned non-JSON or safety message: {text}")
+        return {
+            "appliance_name": None,
+            "brand": None,
+            "model": None,
+            "confidence": 0.0,
+            "visible_evidence": f"Moderation/Response note: {text}",
+            "needs_better_image": True,
+        }
+
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            cleaned = part.removeprefix("json").strip()
+            if cleaned.startswith("{") and cleaned.endswith("}"):
+                text = cleaned
+                break
+
+    if not text.startswith("{"):
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            text = text[start:end + 1]
 
     try:
         result = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            "Appliance identification returned invalid JSON"
-        ) from exc
+        logger.error(f"Failed to parse JSON. Raw content: {text}")
+        return {
+            "appliance_name": None,
+            "brand": None,
+            "model": None,
+            "confidence": 0.0,
+            "visible_evidence": "Could not parse identification details.",
+            "needs_better_image": True,
+        }
 
     if not isinstance(result, dict) or not REQUIRED_FIELDS.issubset(result):
         raise RuntimeError(

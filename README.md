@@ -67,6 +67,9 @@ Missing or invalid values fail fast with a clear message from `api/config.py`.
 | `GET` | `/health` | public | Returns `{"status": "ok"}` |
 | `POST` | `/api/chat` | Bearer JWT | Text and/or image question answered by the AI agent |
 | `POST` | `/api/panel/analyze` | Bearer JWT | Detects the buttons and dials in a cropped panel photo |
+| `POST` | `/api/manuals` | Bearer JWT | Explicitly saves a manual to Firebase Firestore |
+| `PATCH` | `/api/manuals/{manual_id}/bookmark` | Bearer JWT | Sets a manual bookmark for its owner |
+| `POST` | `/api/manuals/{manual_id}/rate` | Bearer JWT | Toggles or changes a like/dislike rating |
 
 ### `POST /api/panel/analyze`
 
@@ -139,6 +142,15 @@ of IP.
 
 Production health check:
 `https://backend-howdowo.vercel.app/health`.
+
+### Firebase / Firestore persistence
+
+Completed manual guides are saved automatically in the `manuals` Firestore
+collection after `/api/chat` or `/api/chat/stream` finishes formatting a manual.
+Ratings are stored in `manuals/{manual_id}/ratings/{user_uid}` with one
+toggleable rating per user. Configure `FIREBASE_PROJECT_ID` and either
+`FIREBASE_SERVICE_ACCOUNT_JSON` (a JSON string) or
+`GOOGLE_APPLICATION_CREDENTIALS` (a local service-account file path).
 
 ### Serverless execution time (risk 7)
 

@@ -8,15 +8,20 @@ development ``python-dotenv`` loads them from a local ``.env`` file.
 
 from __future__ import annotations
 
+import dataclasses
+import functools
 import os
-from dataclasses import dataclass
-from functools import lru_cache
 
-from dotenv import load_dotenv
+import dotenv
+import fastapi
+import langchain_openai
+import slowapi
+from slowapi import util
+
 
 # Load a local .env when present. Vercel injects the values itself, so this is
 # a no-op there. Existing variables are never overwritten.
-load_dotenv()
+dotenv.load_dotenv()
 
 DEFAULT_ALLOWED_ORIGINS = "http://localhost:3000,https://app.hodowo.com"
 DEFAULT_AI_RATE_LIMIT = "20/minute"
@@ -25,11 +30,12 @@ DEFAULT_OPENROUTER_MODEL = "openrouter/free"
 _VALID_ENVIRONMENTS = {"dev", "prod"}
 
 
+
 class ConfigurationError(RuntimeError):
     """Raised when a required environment variable is missing or invalid."""
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Settings:
     """Non-secret settings validated once at startup."""
 
@@ -42,7 +48,7 @@ def _split_csv(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
-@lru_cache(maxsize=1)
+@functools.lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Return and validate the non-secret settings from the environment."""
     environment = os.getenv("HODOWO_ENV", "dev").strip().lower()
@@ -100,3 +106,22 @@ def get_openrouter_model() -> str:
     """Return the OpenRouter model id, falling back to the free default."""
     model = get_optional_env("OPENROUTER_MODEL", DEFAULT_OPENROUTER_MODEL)
     return model or DEFAULT_OPENROUTER_MODEL
+
+def get_openrouter_llm() -> langchain_openai.ChatOpenAI:
+    return langchain_openai.ChatOpenAI(
+        model=get_openrouter_model(),
+        api_key=get_openrouter_api_key(),
+        base_url="https://openrouter.ai/api/v1",
+        temperature=0,
+    )
+    
+
+def _client_ip(request: fastapi.Request) -> str:
+    """Return the caller IP, honouring the proxy header Vercel sets."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip()
+    return util.get_remote_address(request)
+
+limiter = slowapi.Limiter(key_func=_client_ip)
+ai_rate_limit = limiter.limit(get_settings().ai_rate_limit)

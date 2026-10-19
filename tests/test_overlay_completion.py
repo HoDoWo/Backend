@@ -1,4 +1,4 @@
-from api import langchain_setup as langchain_module
+import langchain_setup as langchain_module
 
 
 def test_ensure_image_overlay_runs_missing_workflow(monkeypatch, tmp_path):
@@ -8,20 +8,8 @@ def test_ensure_image_overlay_runs_missing_workflow(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         langchain_module,
-        "identify_appliance",
-        lambda path, request: {
-            "appliance_name": "espresso machine",
-            "brand": None,
-            "model": None,
-            "confidence": 0.95,
-            "visible_evidence": "control panel",
-            "needs_better_image": False,
-        },
-    )
-    monkeypatch.setattr(
-        langchain_module,
         "retrieve_manual",
-        lambda identification, request, path: {
+        lambda request, path: {
             "summary": "Use the visible controls.",
             "steps": ["Press the brew button."],
             "warnings": [],
@@ -55,13 +43,7 @@ def test_ensure_image_overlay_converts_incomplete_manual_context(
     image.write_bytes(b"image")
     calls = []
 
-    monkeypatch.setattr(
-        langchain_module,
-        "identify_appliance",
-        lambda path, request: {"appliance_name": "espresso machine"},
-    )
-
-    def incomplete_manual(identification, request, path):
+    def incomplete_manual(request, path):
         raise ValueError("identification is missing required appliance fields")
 
     monkeypatch.setattr(langchain_module, "retrieve_manual", incomplete_manual)

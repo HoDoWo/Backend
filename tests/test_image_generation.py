@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from api import image_generation as image_module
+import image_generation as image_module
 
 
 class FakeResponse:
@@ -53,7 +53,9 @@ def test_generate_overlay_uploads_original_and_polls_kie(tmp_path, monkeypatch):
     assert result["image_url"] == "https://output.example/guide.png"
     assert requests_seen[0][0] == image_module.KIE_UPLOAD_URL
     task_payload = requests_seen[1][1]["json"]
-    assert task_payload["model"] == "gpt-image-2-5"
+    assert task_payload["model"] == "gpt-image-2-5-sunburst-image-to-image"
+    assert task_payload["input"]["input_urls"] == ["https://input.example/image.jpg"]
+    assert "Explain how to start a cycle." in task_payload["input"]["prompt"]
     assert "1. Turn the dial" in task_payload["input"]["prompt"]
     assert requests_seen[0][1]["headers"]["Authorization"] == "Bearer test-key"
 

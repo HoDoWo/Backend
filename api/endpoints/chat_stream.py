@@ -1,14 +1,17 @@
 import json
 import pathlib
 
+import fastapi
 import langchain_protocol
 from fastapi import HTTPException, Request, datastructures, responses, types
-from index import ai_rate_limit, app, logger
+from index import ai_rate_limit, logger
 
 from api import langchain_setup, request_helpers, response_formatting
 from api.endpoints import chat
 
-@app.post("/api/chat/stream")
+chat_stream_router = fastapi.APIRouter()
+
+@chat_stream_router.post("/api/chat/stream")
 @ai_rate_limit
 async def chat_stream(request: Request):
     """Stream tool execution steps dynamically and stream only the final agent response via SSE."""

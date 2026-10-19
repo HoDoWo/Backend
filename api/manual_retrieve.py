@@ -2,26 +2,21 @@
 
 from __future__ import annotations
 
-import json
-import os
 import base64
+import json
 import mimetypes
-from pathlib import Path
+import pathlib
 from typing import Any
 
-from langchain_openai import ChatOpenAI
+import config
+import logging_config
 
-if __package__:
-    from .config import get_openrouter_api_key, get_openrouter_model, get_openrouter_llm
-    from .logging_config import get_logger
-else:
-    from config import get_openrouter_api_key, get_openrouter_model, get_openrouter_llm
-    from logging_config import get_logger
+from api import config, logging_config
 
-_get_openrouter_llm = get_openrouter_llm
+_get_openrouter_llm = config.config.get_openrouter_llm
 
 
-logger = get_logger(__name__)
+logger = logging_config.logging_config.get_logger(__name__)
 
 REQUIRED_MANUAL_FIELDS = {
     "summary",
@@ -34,7 +29,7 @@ REQUIRED_MANUAL_FIELDS = {
 
 
 def _image_data_url(image_path: str) -> str:
-    path = Path(image_path)
+    path = pathlib.Path(image_path)
     if not path.is_file():
         raise FileNotFoundError(f"Appliance image does not exist: {image_path}")
     mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"

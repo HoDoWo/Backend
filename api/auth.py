@@ -22,25 +22,31 @@ If no key source is configured, every protected request is rejected with a
 
 from __future__ import annotations
 
+import dataclasses
+import functools
 import os
-from dataclasses import dataclass
-from functools import lru_cache
 from typing import Any
 
+import fastapi
 import jwt
+import logging_config
 
-if __package__:
-    from .logging_config import get_logger
-else:
-    from logging_config import get_logger
+import logging_config
 
-logger = get_logger(__name__)
+logger = logging_config.get_logger(__name__)
 
 # Paths reachable without a token. CORS preflight (OPTIONS) is always allowed.
 # /health is public so uptime checks and Vercel do not need credentials.
 PUBLIC_PATHS = frozenset({"/health", "/docs", "/redoc", "/openapi.json"})
 
-
+def get_current_user(request: fastapi.Request) -> dict:
+    if hasattr(request.state, "user") and request.state.user:
+        return request.state.user
+    raise fastapi.HTTPException(
+        status_code=fastapi.status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials"
+    )
+    
 class AuthError(Exception):
     """Authentication failure carrying the HTTP response to send."""
 
@@ -54,7 +60,7 @@ class AuthError(Exception):
         return {"WWW-Authenticate": "Bearer"} if self.status_code == 401 else {}
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class AuthConfig:
     secret: str | None
     jwks_url: str | None
@@ -111,7 +117,7 @@ def load_config() -> AuthConfig:
     )
 
 
-@lru_cache(maxsize=4)
+@functools.lru_cache(maxsize=4)
 def _jwks_client(url: str) -> jwt.PyJWKClient:
     # One client per URL so fetched signing keys stay cached between requests.
     return jwt.PyJWKClient(url, cache_keys=True)

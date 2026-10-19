@@ -6,19 +6,15 @@ import base64
 import json
 import mimetypes
 import os
+import pathlib
 import time
-from pathlib import Path
 from typing import Any
 
+import logging_config
 import requests
 
-if __package__:
-    from .logging_config import get_logger
-else:
-    from logging_config import get_logger
 
-
-logger = get_logger(__name__)
+logger = logging_config.get_logger(__name__)
 
 KIE_CREATE_URL = "https://api.kie.ai/api/v1/jobs/createTask"
 KIE_STATUS_URL = "https://api.kie.ai/api/v1/jobs/recordInfo"
@@ -33,7 +29,7 @@ def _required_env(name: str) -> str:
 
 
 def _image_data_url(image_path: str) -> str:
-    path = Path(image_path)
+    path = pathlib.Path(image_path)
     if not path.is_file():
         raise FileNotFoundError(f"Appliance image does not exist: {image_path}")
     mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
@@ -63,7 +59,7 @@ def _response_json(response: requests.Response, operation: str) -> dict[str, Any
 
 
 def _upload_image(image_path: str) -> str:
-    path = Path(image_path)
+    path = pathlib.Path(image_path)
     payload = {
         "base64Data": _image_data_url(image_path),
         "uploadPath": "images",

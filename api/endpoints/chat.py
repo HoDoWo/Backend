@@ -15,7 +15,10 @@ from starlette import datastructures
 
 from api import firebase_store
 
-@app.post("/api/chat")
+
+chat_router = fastapi.APIRouter()
+
+@chat_router.post("/api/chat")
 @ai_rate_limit
 async def chat(request: fastapi.Request) -> dict[str, Any]:
     """Run every text and/or image request through the LangChain agent."""

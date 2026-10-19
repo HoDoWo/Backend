@@ -6,19 +6,15 @@ import base64
 import json
 import mimetypes
 import os
+import pathlib
 import time
-from pathlib import Path
 from typing import Any
 
+import logging_config
 import requests
 
-if __package__:
-    from .logging_config import get_logger
-else:
-    from logging_config import get_logger
 
-
-logger = get_logger(__name__)
+logger = logging_config.get_logger(__name__)
 
 KIE_CREATE_URL = "https://api.kie.ai/api/v1/jobs/createTask"
 KIE_STATUS_URL = "https://api.kie.ai/api/v1/jobs/recordInfo"
@@ -33,7 +29,7 @@ def _required_env(name: str) -> str:
 
 
 def _image_data_url(image_path: str) -> str:
-    path = Path(image_path)
+    path = pathlib.Path(image_path)
     if not path.is_file():
         raise FileNotFoundError(f"Appliance image does not exist: {image_path}")
     mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
@@ -63,7 +59,7 @@ def _response_json(response: requests.Response, operation: str) -> dict[str, Any
 
 
 def _upload_image(image_path: str) -> str:
-    path = Path(image_path)
+    path = pathlib.Path(image_path)
     payload = {
         "base64Data": _image_data_url(image_path),
         "uploadPath": "images",
@@ -86,8 +82,8 @@ def _create_task(image_url: str, instructions: str, steps: list[str]) -> str:
     )
     prompt = (
         "Just generate same image but with overlay step by step instructions. PRESERVE exact same base image. Just add the instructions as an overlay, point to the exact buttons or dials to use. Do not invent or alter controls. The base image should remain unchanged.\n\n"
-        #f"Instructions:\n{instructions}\n\n"
-        #f"Steps:\n{numbered_steps}"
+        f"Instructions:\n{instructions}\n\n"
+        f"Steps:\n{numbered_steps}"
     )
     logger.info("Creating Kie task for image overlay generation with prompt: %s", prompt)
     payload = {
@@ -95,7 +91,7 @@ def _create_task(image_url: str, instructions: str, steps: list[str]) -> str:
         "model": "gpt-image-2-5-sunburst-image-to-image",
         "input": {
             "prompt": prompt,
-            "image_input": [image_url],
+            "input_urls": [image_url],
             "aspect_ratio": "auto",
             "resolution": "1K",
             "output_format": "png",

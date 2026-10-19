@@ -13,13 +13,11 @@ from langchain_openai import ChatOpenAI
 if __package__:
     from .config import get_openrouter_api_key, get_openrouter_model
     from .logging_config import get_logger
-    from .identify_appliance import identify_appliance
     from .image_generation import generate_overlay
     from .manual_retrieve import clarification_manual, retrieve_manual
 else:
     from config import get_openrouter_api_key, get_openrouter_model
     from logging_config import get_logger
-    from identify_appliance import identify_appliance
     from image_generation import generate_overlay
     from manual_retrieve import clarification_manual, retrieve_manual
 from dotenv import load_dotenv
@@ -29,9 +27,10 @@ load_dotenv()
 logger = get_logger(__name__)
 
 SYSTEM_PROMPT = """You are HoDoWo, a cautious multimodal home-appliance assistant.
-When an image is provided, identify the appliance before retrieving instructions. If no
-image is provided, answer using the user's text and suggest attaching an image so you can
-identify the appliance and provide a visual guide; do not fail or guess the model.
+When an image is provided, use manual_retrieve to identify the appliance and retrieve
+instructions in one call. If no image is provided, answer using the user's text and
+suggest attaching an image so you can identify the appliance and provide a visual guide;
+do not fail or guess the model.
 Generate an annotated image when the user asks how to do something or when visual guidance
 is useful. When an image is available, always call image_generation after manual_retrieve,
 even when manual_retrieve needs clarification; use the safest available steps or a visual
@@ -74,21 +73,15 @@ def ensure_image_overlay(
     if image_result:
         return str(image_result["image_url"])
 
-    identification = next(
-        (item for item in reversed(results) if "appliance_name" in item),
-        None,
-    )
     manual = next(
         (item for item in reversed(results) if {"summary", "steps"}.issubset(item)),
         None,
     )
 
     try:
-        if identification is None:
-            identification = identify_appliance(image_path, user_request)
         if manual is None:
             try:
-                manual = retrieve_manual(identification, user_request, image_path)
+                manual = retrieve_manual(user_request, image_path)
             except ValueError as exc:
                 manual = clarification_manual(str(exc))
 
@@ -118,34 +111,26 @@ def build_agent(image_path: str | None = None):
     """Build the HoDoWo agent with the declared appliance tools."""
     logger.debug("Building LangChain agent (has_image=%s)", image_path is not None)
 
-    def identify_tool(user_context: str = "") -> dict[str, Any]:
-        return identify_appliance(image_path, user_context)
-
     def manual_tool(
-        identification: dict[str, Any],
         user_request: str,
+        brand: str = "",
+        model: str = "",
     ) -> dict[str, Any]:
         try:
-            return retrieve_manual(identification, user_request, image_path)
+            return retrieve_manual(user_request, image_path, brand or None, model or None)
         except ValueError as exc:
             return clarification_manual(str(exc))
 
     def overlay_tool(instructions: str, steps: list[str]) -> dict[str, Any]:
         return generate_overlay(image_path, instructions, steps)
 
-    identify = StructuredTool.from_function(
-        func=identify_tool,
-        name="appliance_identification",
-        description="Identify the appliance, brand and model from the uploaded image.",
-    )
     manual = StructuredTool.from_function(
         func=manual_tool,
         name="manual_retrieve",
         description=(
-            "Retrieve safe operating instructions using the complete structured "
-            "result from appliance_identification and the user's requested action. "
-            "Pass the previous identification result as identification. The original "
-            "image is automatically supplied for additional context."
+            "Use the original image and user request to identify the appliance, brand "
+            "and model, then retrieve safe operating instructions. Optional brand and "
+            "model hints may be provided. The original image is automatically supplied."
         ),
     )
     overlay = StructuredTool.from_function(
@@ -195,6 +180,6 @@ def build_agent(image_path: str | None = None):
 
     return create_agent(
         _get_openrouter_llm(),
-        [identify, manual, overlay, panel],
+        [manual, overlay, panel],
         system_prompt=SYSTEM_PROMPT,
     )

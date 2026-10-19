@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from matplotlib import text
+
 if __package__:
     from .image_generation import _image_data_url
     from .langchain_setup import _json_tool_results
@@ -121,7 +123,7 @@ def format_steps(raw_steps: list[Any]) -> list[dict[str, Any]]:
 
 
 def extract_text_steps(text: str) -> list[dict[str, Any]]:
-    matches = list(re.finditer(r"(?m)^\s*(\d+)[.)]\s+(.+?)\s*$", text))
+    matches = list(re.finditer(r"(?m)^\s*(\d+)[.)]\s+([^\r\n]+)", text))
     steps = []
     for index, match in enumerate(matches, start=1):
         content = re.sub(r"\*{1,3}", "", match.group(2)).strip()

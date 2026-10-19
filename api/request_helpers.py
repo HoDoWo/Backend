@@ -3,33 +3,38 @@
 from __future__ import annotations
 
 import json
+import pathlib
 import tempfile
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
-from fastapi import HTTPException
-from starlette.datastructures import UploadFile
+import fastapi
+from aiofiles import tempfile
+from starlette import datastructures
 
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 
-def find_uploaded_image(form: Mapping[str, object]) -> UploadFile | None:
+def find_uploaded_image(form: Mapping[str, object]) -> datastructures.UploadFile | None:
     for value in form.values():
-        if isinstance(value, UploadFile) and value.content_type and value.content_type.startswith("image/"):
+        if isinstance(value, datastructures.UploadFile) and value.content_type and value.content_type.startswith("image/"):
             return value
     return None
 
 
-async def save_uploaded_image(image: UploadFile, default_name: str) -> str:
+async def save_uploaded_image(image: datastructures.UploadFile, default_name: str) -> str:
     if not image.content_type or not image.content_type.startswith("image/"):
-        raise HTTPException(status_code=415, detail="image must be an image upload")
+        raise fastapi.HTTPException(status_code=415, detail="image must be an image upload")
+
     content = await image.read()
+
     if len(content) > MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="image is larger than 15 MB")
-    suffix = Path(image.filename or default_name).suffix or ".jpg"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temporary:
-        temporary.write(content)
+        raise fastapi.HTTPException(status_code=413, detail="image is larger than 15 MB")
+
+    suffix = pathlib.Path(image.filename or default_name).suffix or ".jpg"
+
+    async with tempfile.NamedTemporaryFile("wb", suffix=suffix, delete=False) as temporary:
+        await temporary.write(content)
         return temporary.name
 
 

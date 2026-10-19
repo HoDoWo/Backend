@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -14,15 +15,33 @@ from starlette.datastructures import UploadFile
 if __package__:
     from .auth import PUBLIC_PATHS, AuthError, authenticate_request
     from .config import get_settings
-    from .langchain_setup import build_agent
+    from .langchain_setup import build_agent, ensure_image_overlay
     from .logging_config import get_logger
     from .panel_analyze import PanelControlError, analyze_panel, locate_panel
+    from .ratings import (
+        RATINGS_TO_READ,
+        ApplianceRef,
+        RatingIn,
+        appliance_id,
+        build_rating_context,
+        build_record,
+        get_store,
+    )
 else:
     from auth import PUBLIC_PATHS, AuthError, authenticate_request
     from config import get_settings
-    from langchain_setup import build_agent
+    from langchain_setup import build_agent, ensure_image_overlay
     from logging_config import get_logger
     from panel_analyze import PanelControlError, analyze_panel, locate_panel
+    from ratings import (
+        RATINGS_TO_READ,
+        ApplianceRef,
+        RatingIn,
+        appliance_id,
+        build_rating_context,
+        build_record,
+        get_store,
+    )
 
 settings = get_settings()
 app = FastAPI(title="HoDoWo backend")
@@ -145,20 +164,64 @@ async def _save_uploaded_image(image: UploadFile, default_name: str) -> str:
         return temporary.name
 
 
+def _parse_appliance(raw: object) -> ApplianceRef | None:
+    """Read the optional "appliance" sent by the app with a question.
+
+    JSON requests send it as an object; multipart requests (with a photo)
+    send the same object as a JSON string in the "appliance" form field.
+    """
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("Ignored an appliance field that is not valid JSON")
+            return None
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return ApplianceRef.model_validate(raw)
+    except ValidationError:
+        logger.warning("Ignored an invalid appliance object in a chat request")
+        return None
+
+
+def _rating_context_for(appliance: ApplianceRef | None) -> str:
+    """Previous rated answers for the appliance, ready for the prompt (#40).
+
+    Never blocks the chat: without Firestore, or on any storage error, the
+    question is simply sent without this extra context.
+    """
+    key = appliance_id(appliance)
+    if not key:
+        return ""
+
+    try:
+        store = get_store()
+        if store is None:
+            return ""
+        return build_rating_context(store.recent_for(key, RATINGS_TO_READ))
+    except Exception as exc:  # noqa: BLE001 - the ratings are optional context
+        logger.warning("Could not load previous ratings: %s", exc)
+        return ""
+
+
 @app.post("/api/chat")
 @ai_rate_limit
-async def chat(request: Request) -> dict[str, str]:
+async def chat(request: Request) -> dict[str, str | None]:
     """Run every text and/or image request through the LangChain agent."""
     image: UploadFile | None = None
     image_path: str | None = None
+    appliance: ApplianceRef | None = None
 
     if request.headers.get("content-type", "").startswith("multipart/form-data"):
         form = await request.form()
         message = form.get("message") or form.get("text") or ""
         image = _find_uploaded_image(form)
+        appliance = _parse_appliance(form.get("appliance"))
     else:
         body = await request.json()
         message = body.get("message") or body.get("text") or ""
+        appliance = _parse_appliance(body.get("appliance"))
 
     if not isinstance(message, str):
         raise HTTPException(status_code=422, detail="message must be text")
@@ -177,6 +240,10 @@ async def chat(request: Request) -> dict[str, str]:
         prompt = message or "Identify, describe and provide instructions for the appliance in the uploaded image."
         if image_path is not None:
             prompt += f"\nUploaded image path: {image_path}"
+
+        rating_context = _rating_context_for(appliance)
+        if rating_context:
+            prompt = f"{rating_context}\n\nUser question: {prompt}"
 
         logger.info("Invoking LangChain agent (has_image=%s)", image_path is not None)
         result = build_agent(image_path).invoke(
@@ -263,3 +330,31 @@ async def panel_locate(request: Request) -> dict[str, dict[str, float] | None]:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
         Path(image_path).unlink(missing_ok=True)
+
+
+@app.post("/api/feedback", status_code=201)
+@ai_rate_limit
+async def feedback(request: Request) -> dict[str, str]:
+    """Store the user's rating of an AI answer (#40).
+
+    Body: {"question", "answer", "rating": 1 | -1, "comment"?, "appliance"?}.
+    The user comes from the verified token, never from the body.
+    """
+    try:
+        rating = RatingIn.model_validate(await request.json())
+    except ValueError as exc:  # invalid JSON or invalid fields
+        raise HTTPException(status_code=422, detail="invalid feedback") from exc
+
+    store = get_store()
+    if store is None:
+        raise HTTPException(status_code=503, detail="ratings storage is not configured")
+
+    user_id = str(request.state.user.get("sub", ""))
+    try:
+        store.add(build_record(rating, user_id))
+    except Exception as exc:  # noqa: BLE001 - report any storage failure as 502
+        logger.error("Could not store the rating: %s", exc)
+        raise HTTPException(status_code=502, detail="could not store the rating") from exc
+
+    logger.info("Stored an AI answer rating (rating=%s)", rating.rating)
+    return {"status": "stored"}

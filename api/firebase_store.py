@@ -1,5 +1,3 @@
-"""Firestore persistence for generated appliance manuals."""
-
 from __future__ import annotations
 
 import json
@@ -116,6 +114,37 @@ def set_rating(user_uid: str, manual_id: str, rating: int) -> int:
     return rating
 
 
+# How many of a user's manuals are read to pick the newest ones. Sorting is
+# done here, so the query needs no composite index.
+USER_MANUALS_TO_READ = 100
+
+
+def _created(manual: dict[str, Any]) -> datetime:
+    value = manual.get("created_at")
+    return value if isinstance(value, datetime) else datetime.min.replace(tzinfo=timezone.utc)
+
+
+def list_user_manuals(
+    user_uid: str, limit: int, bookmarked_only: bool = False
+) -> list[dict[str, Any]]:
+    """Newest manuals of one user (with their Firestore id), for the Home screen."""
+    if not user_uid:
+        raise ValueError("authenticated user uid is required")
+
+    from google.cloud.firestore_v1.base_query import FieldFilter
+
+    query = get_firestore_client().collection("manuals").where(
+        filter=FieldFilter("user_uid", "==", user_uid)
+    )
+    manuals = [
+        {**(snapshot.to_dict() or {}), "id": snapshot.id}
+        for snapshot in query.limit(USER_MANUALS_TO_READ).stream()
+    ]
+    if bookmarked_only:
+        manuals = [manual for manual in manuals if manual.get("is_bookmarked")]
+    return sorted(manuals, key=_created, reverse=True)[:limit]
+
+
 def _rating_score(manual_ref) -> int:
     """Sum of the like (+1) and dislike (-1) votes stored under a manual."""
     total = 0
@@ -156,10 +185,4 @@ def find_rated_manuals(appliance_name: str | None, limit: int = 20) -> list[dict
         if score:
             rated.append({**(snapshot.to_dict() or {}), "id": snapshot.id, "score": score})
 
-    oldest = datetime.min.replace(tzinfo=timezone.utc)
-
-    def created(manual: dict[str, Any]) -> datetime:
-        value = manual.get("created_at")
-        return value if isinstance(value, datetime) else oldest
-
-    return sorted(rated, key=created, reverse=True)
+    return sorted(rated, key=_created, reverse=True)

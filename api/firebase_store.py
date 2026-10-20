@@ -1,5 +1,3 @@
-"""Firestore persistence for generated appliance manuals."""
-
 from __future__ import annotations
 
 import json

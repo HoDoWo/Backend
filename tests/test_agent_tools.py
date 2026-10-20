@@ -140,3 +140,16 @@ def test_a_working_overlay_is_returned_unchanged(monkeypatch):
     tool = _agent_tools(monkeypatch)["image_generation"]
 
     assert tool.func(instructions="x", steps=["y"]) == {"image_url": "https://example.test/o.png"}
+
+
+def test_an_unreadable_manual_does_not_stop_the_answer(monkeypatch):
+    def broken_manual(*args, **kwargs):
+        raise RuntimeError("Manual retrieval returned invalid JSON")
+
+    monkeypatch.setattr(langchain_setup, "retrieve_manual", broken_manual)
+    tool = _agent_tools(monkeypatch)["manual_retrieve"]
+
+    result = tool.func(user_request="How do I set 180 °C?")
+
+    assert result["needs_clarification"] is True
+    assert result["steps"]

@@ -21,6 +21,7 @@ from endpoints import (  # noqa: E402
     chat_stream,
     environmental_tip,
     locate_buttons,
+    manuals,
     rating,
 )
 from fastapi import FastAPI, HTTPException, Request, responses  # noqa: E402
@@ -34,6 +35,7 @@ app = FastAPI(title="HoDoWo backend")
 
 app.include_router(chat.chat_router)
 app.include_router(chat_stream.chat_stream_router)
+app.include_router(manuals.manuals_router)
 app.include_router(rating.rate_router)
 app.include_router(bookmarks.bookmark_router)
 app.include_router(locate_buttons.locate_router)

@@ -35,6 +35,50 @@ def _image_data_url(image_path: str) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
+def _load_json_object(content: str) -> dict[str, Any] | None:
+    """Read the JSON object of a model answer.
+
+    Models do not always answer with JSON only: sometimes the object is wrapped in
+    a ```json fence or has a sentence before or after it. In that case the text
+    from the first "{" to the last "}" is tried as well.
+    """
+    text = content.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        if text.rstrip().endswith("```"):
+            text = text.rstrip()[:-3]
+        text = text.strip()
+
+    candidates = [text]
+    start, end = text.find("{"), text.rfind("}")
+    if 0 <= start < end:
+        candidates.append(text[start:end + 1])
+
+    for candidate in candidates:
+        try:
+            result = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(result, dict):
+            return result
+    return None
+
+
+def _as_text(item: Any) -> Any:
+    """A step or warning given as an object becomes "title: description"."""
+    if not isinstance(item, dict):
+        return item
+    title = str(item.get("title") or "").strip()
+    body = str(item.get("description") or item.get("text") or "").strip()
+    return f"{title}: {body}" if title and body else (title or body)
+
+
+def _normalise_lists(result: dict[str, Any]) -> None:
+    for field in ("steps", "warnings"):
+        if isinstance(result.get(field), list):
+            result[field] = [_as_text(item) for item in result[field]]
+
+
 def _parse_response(content: Any) -> dict[str, Any]:
     if isinstance(content, list):
         content = "".join(
@@ -46,16 +90,11 @@ def _parse_response(content: Any) -> dict[str, Any]:
     if not isinstance(content, str):
         raise RuntimeError("Manual retrieval returned a non-text response")
 
-    text = content.strip()
-    if text.startswith("```"):
-        text = text.removeprefix("```json").removeprefix("```").strip()
-        if text.endswith("```"):
-            text = text[:-3].strip()
-
-    try:
-        result = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("Manual retrieval returned invalid JSON") from exc
+    result = _load_json_object(content)
+    if result is None:
+        logger.warning("Manual retrieval returned invalid JSON: %.500s", content)
+        raise RuntimeError("Manual retrieval returned invalid JSON")
+    _normalise_lists(result)
 
     if not isinstance(result, dict) or not REQUIRED_MANUAL_FIELDS.issubset(result):
         raise RuntimeError("Manual retrieval response is missing required fields")

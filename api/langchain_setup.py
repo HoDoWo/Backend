@@ -120,6 +120,14 @@ def build_agent(image_path: str | None = None):
             return retrieve_manual(user_request, image_path, brand or None, model or None)
         except ValueError as exc:
             return clarification_manual(str(exc))
+        except RuntimeError as exc:
+            # The model answered in an unexpected format: do not stop the whole chat,
+            # let the agent answer with safe generic guidance instead.
+            logger.warning("Manual retrieval failed: %s", exc)
+            return clarification_manual(
+                "The manual could not be read for this appliance. "
+                "Ask the user for the brand and model or a clearer photo of the panel."
+            )
 
     def overlay_tool(instructions: str, steps: list[str]) -> dict[str, Any]:
         # A failed overlay (Kie not configured, out of credits, timeout...) must not

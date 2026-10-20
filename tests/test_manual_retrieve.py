@@ -75,3 +75,37 @@ def test_retrieve_manual_rejects_invalid_response(monkeypatch):
 
     with pytest.raises(RuntimeError, match="missing required fields"):
         manual_module.retrieve_manual("How do I start it?")
+
+
+def test_retrieve_manual_accepts_text_around_the_json(monkeypatch):
+    answer = f"Here is the guidance you asked for:\n{json.dumps(_manual_result())}\nHope it helps!"
+    model = FakeModel(FakeResponse(answer))
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
+
+    assert manual_module.retrieve_manual("How do I start it?") == _manual_result()
+
+
+def test_retrieve_manual_accepts_an_unlabelled_code_fence(monkeypatch):
+    model = FakeModel(FakeResponse(f"```JSON\n{json.dumps(_manual_result())}\n```"))
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
+
+    assert manual_module.retrieve_manual("How do I start it?") == _manual_result()
+
+
+def test_steps_given_as_objects_become_text(monkeypatch):
+    result = _manual_result()
+    result["steps"] = [{"title": "Dial", "description": "Turn it to Quick Wash"}, "Press Start."]
+    model = FakeModel(FakeResponse(json.dumps(result)))
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
+
+    steps = manual_module.retrieve_manual("How do I start it?")["steps"]
+
+    assert steps == ["Dial: Turn it to Quick Wash", "Press Start."]
+
+
+def test_retrieve_manual_rejects_text_without_json(monkeypatch):
+    model = FakeModel(FakeResponse("Sorry, I cannot see the appliance."))
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
+
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        manual_module.retrieve_manual("How do I start it?")

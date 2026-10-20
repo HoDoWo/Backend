@@ -1,5 +1,3 @@
-"""Daily energy-saving tip shown on the Home screen ("Helpful Tip")."""
-
 from __future__ import annotations
 
 import datetime

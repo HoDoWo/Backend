@@ -122,7 +122,13 @@ def build_agent(image_path: str | None = None):
             return clarification_manual(str(exc))
 
     def overlay_tool(instructions: str, steps: list[str]) -> dict[str, Any]:
-        return generate_overlay(image_path, instructions, steps)
+        # A failed overlay (Kie not configured, out of credits, timeout...) must not
+        # stop the whole answer: the agent still returns the guide without the image.
+        try:
+            return generate_overlay(image_path, instructions, steps)
+        except (FileNotFoundError, RuntimeError, ValueError, KeyError) as exc:
+            logger.warning("Image overlay failed: %s", exc)
+            return {"image_url": None, "error": f"The annotated image is not available: {exc}"}
 
     manual = StructuredTool.from_function(
         func=manual_tool,

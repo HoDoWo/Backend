@@ -116,3 +116,27 @@ def test_control_panel_tool_has_a_useful_description(monkeypatch):
     tool = _agent_tools(monkeypatch)["control_panel_analysis"]
 
     assert "control panel" in tool.description.lower()
+
+
+def test_a_failed_overlay_does_not_stop_the_answer(monkeypatch):
+    def broken_overlay(image_path: str, instructions: str, steps: list[str]) -> dict[str, Any]:
+        raise RuntimeError("KIE_API_KEY is not configured")
+
+    monkeypatch.setattr(langchain_setup, "generate_overlay", broken_overlay)
+    tool = _agent_tools(monkeypatch)["image_generation"]
+
+    result = tool.func(instructions="Set 180 °C with the fan", steps=["Turn the knob"])
+
+    assert result["image_url"] is None
+    assert "KIE_API_KEY is not configured" in result["error"]
+
+
+def test_a_working_overlay_is_returned_unchanged(monkeypatch):
+    monkeypatch.setattr(
+        langchain_setup,
+        "generate_overlay",
+        lambda image_path, instructions, steps: {"image_url": "https://example.test/o.png"},
+    )
+    tool = _agent_tools(monkeypatch)["image_generation"]
+
+    assert tool.func(instructions="x", steps=["y"]) == {"image_url": "https://example.test/o.png"}

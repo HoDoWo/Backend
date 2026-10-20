@@ -186,3 +186,73 @@ def find_rated_manuals(appliance_name: str | None, limit: int = 20) -> list[dict
             rated.append({**(snapshot.to_dict() or {}), "id": snapshot.id, "score": score})
 
     return sorted(rated, key=_created, reverse=True)
+
+
+# How many of the newest manuals (of all users) are read to rank the popular ones.
+POPULAR_MANUALS_TO_READ = 300
+
+# Titles too short to mean anything ("?", "ok") are not ranked.
+MIN_POPULAR_TITLE_LENGTH = 4
+
+
+def _title_key(title: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(title or "").lower()).strip()
+
+
+def _is_web_image(url: Any) -> bool:
+    """Only real web images are shared: data URIs are large copies of user photos."""
+    return isinstance(url, str) and url.startswith(("http://", "https://"))
+
+
+def popular_manuals(limit: int) -> list[dict[str, Any]]:
+    """Most searched and most saved guides among all the users of the app.
+
+    Manuals of the same recognised appliance with the same issue title count as the
+    same guide. ``search_count`` is how many times it was generated, ``save_count``
+    how many users bookmarked it; a save weighs twice a search. The newest manual of
+    each group (preferably one with a web image) represents it. Nothing that
+    identifies a user is returned.
+    """
+    from google.cloud.firestore_v1 import Query
+
+    snapshots = (
+        get_firestore_client()
+        .collection("manuals")
+        .order_by("created_at", direction=Query.DESCENDING)
+        .limit(POPULAR_MANUALS_TO_READ)
+        .stream()
+    )
+
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for snapshot in snapshots:
+        manual = {**(snapshot.to_dict() or {}), "id": snapshot.id}
+        key = manual.get("appliance_key") or appliance_key(manual.get("appliance_name"))
+        title = _title_key(manual.get("issue_title"))
+        if not key or len(title) < MIN_POPULAR_TITLE_LENGTH or not manual.get("steps"):
+            continue
+        groups.setdefault((key, title), []).append(manual)
+
+    ranked = []
+    for manuals in groups.values():
+        manuals.sort(key=_created, reverse=True)
+        best = next((m for m in manuals if _is_web_image(m.get("image_url"))), manuals[0])
+        searches = len(manuals)
+        saves = sum(1 for m in manuals if m.get("is_bookmarked"))
+        ranked.append(
+            {
+                "id": best["id"],
+                "appliance_name": best.get("appliance_name"),
+                "issue_title": best.get("issue_title"),
+                "overview": best.get("overview"),
+                "steps": best.get("steps"),
+                "warnings": best.get("warnings"),
+                "image_url": best.get("image_url") if _is_web_image(best.get("image_url")) else None,
+                "created_at": manuals[0].get("created_at"),
+                "search_count": searches,
+                "save_count": saves,
+                "score": searches + 2 * saves,
+            }
+        )
+
+    ranked.sort(key=lambda m: (m["score"], _created(m)), reverse=True)
+    return ranked[:limit]

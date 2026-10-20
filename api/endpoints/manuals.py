@@ -1,5 +1,3 @@
-"""Manuals of the signed-in user, for the Home screen ("Recent Manuals")."""
-
 from __future__ import annotations
 
 from datetime import datetime

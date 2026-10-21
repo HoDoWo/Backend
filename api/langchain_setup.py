@@ -41,6 +41,9 @@ when the required input is absent. Never recommend unsafe servicing, bypassing s
 features, or opening the appliance. If user provides an image, always try to finish your answer with an generated image overlay, even if the manual retrieval needs clarification"""
 
 
+# Longest wait for one model answer.
+LLM_TIMEOUT_SECONDS = 60
+
 def _json_tool_results(messages: list[object]) -> list[dict[str, Any]]:
     """Return JSON objects emitted by LangChain tool messages."""
     results: list[dict[str, Any]] = []
@@ -72,6 +75,10 @@ def ensure_image_overlay(
     image_result = next((item for item in reversed(results) if item.get("image_url")), None)
     if image_result:
         return str(image_result["image_url"])
+    # The agent already tried the overlay and it failed: trying again would only
+    # spend the time left (and Kie credits) and risk the Vercel timeout.
+    if any("image_url" in item and "error" in item for item in results):
+        return None
 
     manual = next(
         (item for item in reversed(results) if {"summary", "steps"}.issubset(item)),
@@ -104,6 +111,9 @@ def _get_openrouter_llm() -> ChatOpenAI:
         model=get_openrouter_model(),
         api_key=get_openrouter_api_key(),
         base_url="https://openrouter.ai/api/v1",
+        # A stuck model call must not use up the whole 300 s of Vercel.
+        timeout=LLM_TIMEOUT_SECONDS,
+        max_retries=1,
     )
 
 

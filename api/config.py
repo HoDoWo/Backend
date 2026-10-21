@@ -113,6 +113,9 @@ def get_openrouter_llm() -> langchain_openai.ChatOpenAI:
         api_key=get_openrouter_api_key(),
         base_url="https://openrouter.ai/api/v1",
         temperature=0,
+        # A stuck model call must not use up the whole 300 s of Vercel.
+        timeout=60,
+        max_retries=1,
     )
     
 

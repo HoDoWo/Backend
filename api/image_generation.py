@@ -12,6 +12,7 @@ from typing import Any
 
 import logging_config
 import requests
+import time_budget
 
 
 logger = logging_config.get_logger(__name__)
@@ -19,6 +20,15 @@ logger = logging_config.get_logger(__name__)
 KIE_CREATE_URL = "https://api.kie.ai/api/v1/jobs/createTask"
 KIE_STATUS_URL = "https://api.kie.ai/api/v1/jobs/recordInfo"
 KIE_UPLOAD_URL = "https://kieai.redpandaai.co/api/file-base64-upload"
+
+# Longest wait for one Kie image (it usually takes 30-90 s).
+DEFAULT_KIE_TIMEOUT_SECONDS = 150
+# Timeout of each single HTTP call to Kie.
+HTTP_TIMEOUT_SECONDS = 30
+# Below this many seconds left in the request, the overlay is not even started.
+MIN_OVERLAY_SECONDS = 45
+# Seconds kept free after the overlay, to finish and send the answer.
+FINISH_MARGIN_SECONDS = 10
 
 
 def _required_env(name: str) -> str:
@@ -66,7 +76,7 @@ def _upload_image(image_path: str) -> str:
         "fileName": path.name,
     }
     result = _response_json(
-        requests.post(KIE_UPLOAD_URL, json=payload, headers=_headers(), timeout=120),
+        requests.post(KIE_UPLOAD_URL, json=payload, headers=_headers(), timeout=HTTP_TIMEOUT_SECONDS),
         "image upload",
     )
     data = result.get("data") or {}
@@ -98,7 +108,7 @@ def _create_task(image_url: str, instructions: str, steps: list[str]) -> str:
         },
     }
     result = _response_json(
-        requests.post(KIE_CREATE_URL, json=payload, headers=_headers(), timeout=120),
+        requests.post(KIE_CREATE_URL, json=payload, headers=_headers(), timeout=HTTP_TIMEOUT_SECONDS),
         "task creation",
     )
     if result.get("code") != 200:
@@ -126,7 +136,9 @@ def _result_url(payload: dict[str, Any]) -> str | None:
 
 
 def _wait_for_task(task_id: str) -> str:
-    timeout = int(os.getenv("KIE_TIMEOUT_SECONDS", "600"))
+    timeout = int(os.getenv("KIE_TIMEOUT_SECONDS", str(DEFAULT_KIE_TIMEOUT_SECONDS)))
+    # Never wait past the request budget: Vercel would kill the whole answer.
+    timeout = min(timeout, time_budget.remaining() - FINISH_MARGIN_SECONDS)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -134,7 +146,7 @@ def _wait_for_task(task_id: str) -> str:
                 KIE_STATUS_URL,
                 params={"taskId": task_id},
                 headers={"Authorization": _headers()["Authorization"]},
-                timeout=120,
+                timeout=HTTP_TIMEOUT_SECONDS,
             )
         except requests.RequestException as exc:
             raise RuntimeError(f"Kie task status request failed: {exc}") from exc
@@ -166,6 +178,8 @@ def generate_overlay(
         isinstance(step, str) and step.strip() for step in steps
     ):
         raise ValueError("steps must be a non-empty list of strings")
+    if time_budget.remaining() < MIN_OVERLAY_SECONDS:
+        raise RuntimeError("Not enough time left in the request for the image overlay")
 
     uploaded_url = _upload_image(image_path)
     task_id = _create_task(uploaded_url, instructions, steps)

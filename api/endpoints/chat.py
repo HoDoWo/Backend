@@ -10,6 +10,7 @@ import logging_config
 import reinforcement
 import request_helpers
 import response_formatting
+import time_budget
 from starlette import datastructures
 
 logger = logging_config.get_logger(__name__)
@@ -52,6 +53,8 @@ async def chat(request: fastapi.Request) -> dict[str, Any]:
     if image is not None:
         image_path = await request_helpers.save_uploaded_image(image, "appliance.jpg")
 
+    # Vercel stops the function after 300 s: the slow steps share this budget.
+    time_budget.start()
     try:
         prompt = message or "Identify, describe and provide instructions for the appliance in the uploaded image."
         if image_path is not None:

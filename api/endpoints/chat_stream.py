@@ -11,6 +11,7 @@ import logging_config
 import reinforcement
 import request_helpers
 import response_formatting
+import time_budget
 from fastapi import HTTPException, Request, datastructures, responses
 from endpoints import chat
 
@@ -53,6 +54,8 @@ async def chat_stream(request: Request):
         image_path = await request_helpers.save_uploaded_image(image, "appliance.jpg")
 
     async def event_generator():
+        # Vercel stops the function after 300 s: the slow steps share this budget.
+        time_budget.start()
         try:
             if image_path:
                 yield f"event: step\ndata: {json.dumps({'step': 'identifying', 'title': 'Identifying appliance...', 'detail': 'Analyzing image features'})}\n\n"

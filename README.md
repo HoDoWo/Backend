@@ -52,7 +52,10 @@ keys: the repository is public.
 |----------|----------|---------|
 | `OPENROUTER_API_KEY` | yes (for AI calls) | Calls to OpenRouter |
 | `OPENROUTER_MODEL` | no | Model id; defaults to `openrouter/free` |
-| `OPENAI_API_KEY`, `KIE_API_KEY` | no | Future providers |
+| `KIE_API_KEY` | no | Kie.ai image overlay of the guides; without it the guide is returned without the annotated image |
+| `KIE_TIMEOUT_SECONDS` | no | Longest wait for one Kie image; also limited by the request budget |
+| `REQUEST_BUDGET_SECONDS` | no | Time budget of one chat request; defaults to `240`, below Vercel's 300 s |
+| `FIREBASE_PROJECT_ID`, `FIREBASE_SERVICE_ACCOUNT_JSON` | yes (for saved guides) | Firestore persistence, see below |
 | `ALLOWED_ORIGINS` | no | Comma-separated CORS origins; defaults to `http://localhost:3000,https://app.hodowo.com`. Never `*` |
 | `AI_RATE_LIMIT` | no | Limit for AI endpoints; defaults to `20/minute` |
 | `HODOWO_ENV` | no | `dev` (default) or `prod` (JSON logs) |
@@ -66,10 +69,14 @@ Missing or invalid values fail fast with a clear message from `api/config.py`.
 |-------|------|------|-------------|
 | `GET` | `/health` | public | Returns `{"status": "ok"}` |
 | `POST` | `/api/chat` | Bearer JWT | Text and/or image question answered by the AI agent |
+| `POST` | `/api/chat/stream` | Bearer JWT | Same as `/api/chat`, answered with Server-Sent Events (`step`, `token`, `response`, `error`) |
 | `POST` | `/api/panel/analyze` | Bearer JWT | Detects the buttons and dials in a cropped panel photo |
 | `POST` | `/api/manuals` | Bearer JWT | Explicitly saves a manual to Firebase Firestore |
 | `PATCH` | `/api/manuals/{manual_id}/bookmark` | Bearer JWT | Sets a manual bookmark for its owner |
 | `POST` | `/api/manuals/{manual_id}/rate` | Bearer JWT | Toggles or changes a like/dislike rating |
+| `GET` | `/api/manuals?limit=&bookmarked=` | Bearer JWT | Newest manuals of the user (Home, Recent Manuals), optionally only the bookmarked ones |
+| `GET` | `/api/manuals/popular?limit=` | Bearer JWT | Most searched and saved guides of all users (searches + 2 × saves), without user data |
+| `GET` | `/api/appliances/environmental-tip` | Bearer JWT | Daily energy-saving tip from the LLM, the same for the whole day |
 
 ### `POST /api/panel/analyze`
 
@@ -154,10 +161,13 @@ toggleable rating per user. Configure `FIREBASE_PROJECT_ID` and either
 
 ### Serverless execution time (risk 7)
 
-Vercel Functions have a maximum execution time that depends on the plan.
-Vision and image-generation calls can take a while, so check the current limit
-in the Vercel docs and verify it with a real LLM call in the walking skeleton
-before relying on it.
+The project is on the Vercel Hobby plan, where a function can run for at most
+300 seconds (Pro: up to 800 s). Every chat request therefore has a time budget
+(`REQUEST_BUDGET_SECONDS`, 240 s by default, see `api/time_budget.py`): the
+Kie image overlay is skipped when less than 45 s are left and every external
+call has a timeout, so the answer always arrives before Vercel stops the
+function. When a request still times out, the Vercel log shows
+`Task timed out after 300 seconds` and the app receives a closed connection.
 
 ## Security
 

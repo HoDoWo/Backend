@@ -135,8 +135,9 @@ async def chat_stream(request: Request):
                 yield f"event: step\ndata: {json.dumps({'step': 'generating', 'title': 'Finalizing visual guide...', 'detail': 'Preparing interactive layout'})}\n\n"
 
             generated_image = langchain_setup.ensure_image_overlay(messages, image_path, message)
+            # Pass image_path into the persistence function before the temporary file gets unlinked
             formatted = response_formatting.format_chat_response(messages, image_path, message, generated_image)
-            formatted = chat._persist_generated_manual(request, formatted)
+            formatted = chat._persist_generated_manual(request, formatted, image_path=image_path)
 
             # Token streaming is retained for ordinary conversations only.
             # Manual/image workflows expose one authoritative final response.

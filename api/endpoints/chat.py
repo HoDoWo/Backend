@@ -1,3 +1,4 @@
+import os
 import pathlib
 from typing import Any
 
@@ -11,6 +12,7 @@ import reinforcement
 import request_helpers
 import response_formatting
 import time_budget
+from firebase_admin import storage
 from starlette import datastructures
 
 logger = logging_config.get_logger(__name__)
@@ -76,7 +78,7 @@ async def chat(request: fastapi.Request) -> dict[str, Any]:
         messages = result["messages"]
         generated_image = langchain_setup.ensure_image_overlay(messages, image_path, message)
         formatted = response_formatting.format_chat_response(messages, image_path, message, generated_image)
-        formatted = _persist_generated_manual(request, formatted)
+        formatted = _persist_generated_manual(request, formatted, image_path=image_path)
         if request.query_params.get("structured") == "true" or request.headers.get("x-response-format") == "structured":
             return formatted
         return formatted
@@ -88,9 +90,11 @@ async def chat(request: fastapi.Request) -> dict[str, Any]:
             pathlib.Path(image_path).unlink(missing_ok=True)
 
 def _persist_generated_manual(
-    request: fastapi.Request, formatted: dict[str, Any]
+    request: fastapi.Request,
+    formatted: dict[str, Any],
+    image_path: str | None = None,
 ) -> dict[str, Any]:
-    """Save a completed guide without making AI responses depend on Firestore."""
+    """Save a completed guide (and its image) without making AI responses depend on Firestore."""
     if not formatted.get("is_manual"):
         return formatted
     try:
@@ -101,9 +105,23 @@ def _persist_generated_manual(
     if not uid:
         logger.error("Cannot persist manual because JWT has no uid or sub claim")
         return formatted
+
+    image_bytes = None
+    if image_path and os.path.exists(image_path):
+        with open(image_path, "rb") as image_file:
+            image_bytes = image_file.read()
+
     try:
-        manual_id = firebase_store.save_manual(uid, formatted)
+        manual_id = firebase_store.save_manual(uid, formatted, image_bytes=image_bytes)
     except (firebase_store.FirebaseConfigurationError, RuntimeError, ValueError) as exc:
         logger.error("Generated manual could not be saved to Firebase: %s", exc)
         return formatted
+
+    if image_bytes:
+        try:
+            blob = storage.bucket().blob(f"manuals/{uid}/{manual_id}.jpg")
+            formatted["image"] = blob.generate_signed_url()
+        except Exception as exc:
+            logger.error("Manual image URL could not be generated: %s", exc)
+
     return {**formatted, "manual_id": manual_id}

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
 from datetime import datetime, timezone
-from functools import lru_cache
 from typing import Any
+
+import firebase_admin
+from firebase_admin import credentials, firestore, storage
+from google.cloud.firestore_v1 import base_query
 
 # Names used when the appliance was not recognised: guides saved under them
 # belong to different appliances, so they are never grouped together.
@@ -16,16 +20,9 @@ class FirebaseConfigurationError(RuntimeError):
     """Raised when Firebase cannot be configured for persistence."""
 
 
-@lru_cache(maxsize=1)
+@functools.lru_cache(maxsize=1)
 def get_firestore_client():
     """Return a lazily initialized Firestore client."""
-    try:
-        import firebase_admin
-        from firebase_admin import credentials, firestore
-    except ImportError as exc:
-        raise FirebaseConfigurationError(
-            "firebase-admin is required for manual persistence"
-        ) from exc
 
     if not firebase_admin._apps:
         service_account_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
@@ -59,12 +56,29 @@ def _manual_ref(manual_id: str):
     return get_firestore_client().collection("manuals").document(manual_id)
 
 
-def save_manual(user_uid: str, manual: dict[str, Any]) -> str:
-    """Persist a generated manual and return its Firestore document id."""
+
+def save_manual(user_uid: str, manual: dict[str, Any], image_bytes: bytes = None) -> str:
+    """Persist a generated manual, upload its image to Cloud Storage, and return its Firestore document id."""
     if not user_uid:
         raise ValueError("authenticated user uid is required")
+        
     ref = get_firestore_client().collection("manuals").document()
+    
+    image_storage_path = None
+    
+    # If real image bytes are provided, upload them to Firebase Cloud Storage
+    if image_bytes:
+        bucket = storage.bucket()
+        # Create a unique path for the image in storage
+        image_storage_path = f"manuals/{user_uid}/{ref.id}.jpg"
+        blob = bucket.blob(image_storage_path)
+        
+        # Upload bytes directly
+        blob.upload_from_string(image_bytes, content_type="image/jpeg")
+        image_url = blob.generate_signed_url()
+
     appliance_name = manual.get("appliance_name") or "Household Appliance"
+    
     ref.set(
         {
             "user_uid": user_uid,
@@ -74,7 +88,7 @@ def save_manual(user_uid: str, manual: dict[str, Any]) -> str:
             "overview": manual.get("overview") or manual.get("reply") or "",
             "steps": manual.get("steps") or [],
             "warnings": manual.get("warnings") or [],
-            "image_url": manual.get("image_url") or manual.get("image"),
+            "image_path": image_storage_path, # Storing the secure Storage reference path instead of a raw URL
             "is_bookmarked": bool(manual.get("is_bookmarked", False)),
             "created_at": firestore_server_timestamp(),
         }
@@ -83,7 +97,6 @@ def save_manual(user_uid: str, manual: dict[str, Any]) -> str:
 
 
 def firestore_server_timestamp():
-    from firebase_admin import firestore
 
     return firestore.SERVER_TIMESTAMP
 
@@ -131,10 +144,9 @@ def list_user_manuals(
     if not user_uid:
         raise ValueError("authenticated user uid is required")
 
-    from google.cloud.firestore_v1.base_query import FieldFilter
 
     query = get_firestore_client().collection("manuals").where(
-        filter=FieldFilter("user_uid", "==", user_uid)
+        filter=base_query.FieldFilter("user_uid", "==", user_uid)
     )
     manuals = [
         {**(snapshot.to_dict() or {}), "id": snapshot.id}
@@ -166,15 +178,14 @@ def find_rated_manuals(appliance_name: str | None, limit: int = 20) -> list[dict
     if not key:
         return []
 
-    from google.cloud.firestore_v1.base_query import FieldFilter
 
     manuals = get_firestore_client().collection("manuals")
     snapshots = list(
-        manuals.where(filter=FieldFilter("appliance_key", "==", key)).limit(limit).stream()
+        manuals.where(filter=base_query.FieldFilter("appliance_key", "==", key)).limit(limit).stream()
     )
     if not snapshots:
         snapshots = list(
-            manuals.where(filter=FieldFilter("appliance_name", "==", appliance_name))
+            manuals.where(filter=base_query.FieldFilter("appliance_name", "==", appliance_name))
             .limit(limit)
             .stream()
         )

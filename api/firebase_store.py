@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -10,6 +11,8 @@ from typing import Any
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 from google.cloud.firestore_v1 import base_query
+
+logger = logging.getLogger(__name__)
 
 # Names used when the appliance was not recognised: guides saved under them
 # belong to different appliances, so they are never grouped together.
@@ -27,6 +30,13 @@ def get_firestore_client():
     if not firebase_admin._apps:
         service_account_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
         project_id = os.getenv("FIREBASE_PROJECT_ID", "").strip() or None
+        # Cloud Storage bucket for the manual photos (e.g. "my-app.firebasestorage.app").
+        storage_bucket = os.getenv("FIREBASE_STORAGE_BUCKET", "").strip() or None
+        options = {
+            key: value
+            for key, value in (("projectId", project_id), ("storageBucket", storage_bucket))
+            if value
+        } or None
         if service_account_json:
             try:
                 credential = credentials.Certificate(json.loads(service_account_json))
@@ -34,11 +44,9 @@ def get_firestore_client():
                 raise FirebaseConfigurationError(
                     "FIREBASE_SERVICE_ACCOUNT_JSON must contain valid service-account JSON"
                 ) from exc
-            firebase_admin.initialize_app(credential, {"projectId": project_id} if project_id else None)
+            firebase_admin.initialize_app(credential, options)
         else:
-            firebase_admin.initialize_app(
-                options={"projectId": project_id} if project_id else None
-            )
+            firebase_admin.initialize_app(options=options)
     return firestore.client()
 
 
@@ -57,28 +65,21 @@ def _manual_ref(manual_id: str):
 
 
 
-def save_manual(user_uid: str, manual: dict[str, Any], image_bytes: bytes = None) -> str:
-    """Persist a generated manual, upload its image to Cloud Storage, and return its Firestore document id."""
+def save_manual(user_uid: str, manual: dict[str, Any], image_bytes: bytes | None = None) -> str:
+    """Persist a generated manual and return its Firestore document id.
+
+    With ``image_bytes`` the user's photo is also uploaded to Cloud Storage.
+    The upload is best effort: when Storage is not configured or fails, the
+    manual is still saved (without ``image_path``), so it keeps appearing in
+    the user's Home and history.
+    """
     if not user_uid:
         raise ValueError("authenticated user uid is required")
-        
+
     ref = get_firestore_client().collection("manuals").document()
-    
-    image_storage_path = None
-    
-    # If real image bytes are provided, upload them to Firebase Cloud Storage
-    if image_bytes:
-        bucket = storage.bucket()
-        # Create a unique path for the image in storage
-        image_storage_path = f"manuals/{user_uid}/{ref.id}.jpg"
-        blob = bucket.blob(image_storage_path)
-        
-        # Upload bytes directly
-        blob.upload_from_string(image_bytes, content_type="image/jpeg")
-        image_url = blob.generate_signed_url()
+    image_storage_path = _upload_manual_image(user_uid, ref.id, image_bytes) if image_bytes else None
 
     appliance_name = manual.get("appliance_name") or "Household Appliance"
-    
     ref.set(
         {
             "user_uid": user_uid,
@@ -88,12 +89,31 @@ def save_manual(user_uid: str, manual: dict[str, Any], image_bytes: bytes = None
             "overview": manual.get("overview") or manual.get("reply") or "",
             "steps": manual.get("steps") or [],
             "warnings": manual.get("warnings") or [],
-            "image_path": image_storage_path, # Storing the secure Storage reference path instead of a raw URL
+            # Picture shown on the Home cards (the generated guide image).
+            "image_url": manual.get("image_url") or manual.get("image"),
+            # The user's own photo in Cloud Storage, when it could be uploaded.
+            "image_path": image_storage_path,
             "is_bookmarked": bool(manual.get("is_bookmarked", False)),
             "created_at": firestore_server_timestamp(),
         }
     )
     return ref.id
+
+
+def manual_image_blob(user_uid: str, manual_id: str):
+    """Cloud Storage object that holds the user's photo of a manual."""
+    return storage.bucket().blob(f"manuals/{user_uid}/{manual_id}.jpg")
+
+
+def _upload_manual_image(user_uid: str, manual_id: str, image_bytes: bytes) -> str | None:
+    """Uploads the photo of a manual; returns its Storage path, or None when it fails."""
+    try:
+        blob = manual_image_blob(user_uid, manual_id)
+        blob.upload_from_string(image_bytes, content_type="image/jpeg")
+        return blob.name
+    except Exception as exc:  # noqa: BLE001 - Storage problems must never lose the manual.
+        logger.warning("Manual photo could not be uploaded to Cloud Storage: %s", exc)
+        return None
 
 
 def firestore_server_timestamp():

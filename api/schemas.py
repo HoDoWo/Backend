@@ -24,13 +24,19 @@ class RatingRequest(BaseModel):
 
 class MarketplaceListingRequest(BaseModel):
     title: str = Field(min_length=3, max_length=120)
-    description: str = Field(min_length=10, max_length=4000)
+    description: str = Field(min_length=30, max_length=800)
     category: str = Field(min_length=2, max_length=80)
     brand: Optional[str] = Field(default=None, max_length=80)
     model: Optional[str] = Field(default=None, max_length=80)
-    condition: str = Field(pattern="^(new|used|refurbished)$")
+    part_number: Optional[str] = Field(default=None, max_length=80)
+    listing_kind: str = Field(pattern="^(appliance|part)$")
+    condition: str = Field(pattern="^(unopened|like-new|used-good|parts-only|refurbished)$")
     price: float = Field(gt=0, le=100000)
-    image_urls: List[str] = Field(min_length=1, max_length=6)
+    image_urls: List[str] = Field(min_length=1, max_length=8)
+    diagnostic_media_urls: List[str] = Field(default_factory=list, max_length=8)
+    handover_methods: List[str] = Field(min_length=1, max_length=2)
+    pickup_zip: Optional[str] = Field(default=None, max_length=20)
+    shipping_price_cents: Optional[int] = Field(default=None, ge=0, le=100000)
     quantity: int = Field(default=1, ge=1, le=99)
 
 
@@ -46,6 +52,8 @@ class MarketplaceListingResponse(BaseModel):
     category: str
     brand: Optional[str] = None
     model: Optional[str] = None
+    part_number: Optional[str] = None
+    listing_kind: str
     condition: str
     type: str
     price: float
@@ -54,3 +62,6 @@ class MarketplaceListingResponse(BaseModel):
     partner_name: Optional[str] = None
     sponsored: bool = False
     status: str
+    handover_methods: List[str] = Field(default_factory=list)
+    pickup_zip: Optional[str] = None
+    shipping_price_cents: Optional[int] = None

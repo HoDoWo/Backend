@@ -125,17 +125,24 @@ def create_marketplace_listing(
     if not user_uid:
         raise ValueError("authenticated user uid is required")
     ref = get_firestore_client().collection("listings").document()
+    item_type = "part" if payload["listing_kind"] == "part" else "used"
+    title = payload["title"].strip()
     data = {
         **payload,
+        "title": title,
+        "item_type": item_type,
+        "price_cents": round(float(payload["price"]) * 100),
+        "title_normalised": _title_key(title),
         "owner_uid": user_uid,
         "seller_name": seller_name,
-        "type": "used" if payload["condition"] != "new" else "new",
+        "type": item_type,
         "status": "active",
         "sponsored": False,
         "created_at": firestore_server_timestamp(),
     }
+    data.pop("price", None)
     ref.set(data)
-    return {**data, "id": ref.id}
+    return {**data, "id": ref.id, "price": float(payload["price"])}
 
 
 def delete_marketplace_listing(user_uid: str, listing_id: str) -> bool:
@@ -166,8 +173,8 @@ def search_marketplace(
     """
     client = get_firestore_client()
     sources = []
-    if item_type in ("all", "used"):
-        sources.append(("listings", "used"))
+    if item_type in ("all", "used", "part"):
+        sources.append(("listings", None))
     if item_type in ("all", "new"):
         sources.append(("partner_products", "new"))
     if item_type in ("all", "part"):
@@ -181,7 +188,9 @@ def search_marketplace(
                 continue
             if collection_name == "listings" and item.get("status", "active") != "active":
                 continue
-            item["type"] = source_type
+            item["type"] = source_type or item.get("item_type") or "used"
+            if item_type != "all" and item["type"] != item_type:
+                continue
             haystack = _title_key(
                 " ".join(
                     str(item.get(key, ""))

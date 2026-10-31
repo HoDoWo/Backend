@@ -50,6 +50,7 @@ def test_create_listing_uses_authenticated_owner(monkeypatch):
         return {
             "id": "listing-1",
             **payload,
+            "listing_kind": "part",
             "type": "used",
             "seller_name": seller_name,
             "status": "active",
@@ -64,9 +65,11 @@ def test_create_listing_uses_authenticated_owner(monkeypatch):
             "title": "Used washer motor",
             "description": "Tested and working motor for a washer.",
             "category": "replacement part",
-            "condition": "used",
+            "listing_kind": "part",
+            "condition": "used-good",
             "price": 45,
             "image_urls": ["https://example.test/motor.jpg"],
+            "handover_methods": ["pickup"],
         },
     )
 
@@ -83,10 +86,48 @@ def test_create_listing_rejects_empty_images():
             "title": "Used washer motor",
             "description": "Tested and working motor for a washer.",
             "category": "replacement part",
-            "condition": "used",
+            "listing_kind": "part",
+            "condition": "used-good",
             "price": 45,
             "image_urls": [],
+            "handover_methods": ["pickup"],
         },
     )
 
     assert response.status_code == 422
+
+
+def test_create_listing_accepts_appliance_form_fields(monkeypatch):
+    monkeypatch.setattr(
+        firebase_store,
+        "create_marketplace_listing",
+        lambda uid, payload, seller_name: {
+            "id": "appliance-1",
+            **payload,
+            "type": "used",
+            "seller_name": seller_name,
+            "status": "active",
+            "sponsored": False,
+        },
+    )
+    response = client.post(
+        "/api/marketplace/listings",
+        headers=bearer(make_token()),
+        json={
+            "title": "Bosch Serie 4 washing machine",
+            "description": "Fully working appliance with tested cycles and normal wear.",
+            "category": "washing machine",
+            "brand": "Bosch",
+            "model": "WAN28201GB",
+            "listing_kind": "appliance",
+            "condition": "used-good",
+            "price": 220,
+            "image_urls": ["https://example.test/washer.jpg"],
+            "handover_methods": ["pickup", "shipping"],
+            "pickup_zip": "08001",
+            "shipping_price_cents": 680,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["listing_kind"] == "appliance"

@@ -26,7 +26,11 @@ service cloud.firestore {
 
     match /listings/{id} {
       allow read: if resource.data.status == 'active' || owns(resource);
-      allow create: if signedIn() && request.resource.data.owner_uid == request.auth.uid;
+      allow create: if signedIn()
+                    && request.resource.data.owner_uid == request.auth.uid
+                    && !request.resource.data.keys().hasAny([
+                      'sponsored', 'partner_tier', 'partner_id', 'commission_pct'
+                    ]);
       allow update, delete: if owns(resource);
     }
 

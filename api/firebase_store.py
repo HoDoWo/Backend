@@ -65,6 +65,7 @@ def save_manual(user_uid: str, manual: dict[str, Any], image_bytes: bytes = None
     ref = get_firestore_client().collection("manuals").document()
     
     image_storage_path = None
+    image_url = manual.get("image_url") or manual.get("image")
     
     # If real image bytes are provided, upload them to Firebase Cloud Storage
     if image_bytes:
@@ -89,6 +90,7 @@ def save_manual(user_uid: str, manual: dict[str, Any], image_bytes: bytes = None
             "steps": manual.get("steps") or [],
             "warnings": manual.get("warnings") or [],
             "image_path": image_storage_path, # Storing the secure Storage reference path instead of a raw URL
+            "image_url": image_url,
             "is_bookmarked": bool(manual.get("is_bookmarked", False)),
             "created_at": firestore_server_timestamp(),
         }

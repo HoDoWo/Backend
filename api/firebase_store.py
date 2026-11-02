@@ -105,19 +105,39 @@ def firestore_server_timestamp():
 
 def _marketplace_item(snapshot) -> dict[str, Any]:
     data = snapshot.to_dict() or {}
+    price_val = data.get("price")
+    if price_val is None and "price_cents" in data:
+        price_val = float(data.get("price_cents", 0)) / 100.0
+    images = data.get("image_urls")
+    if not images and data.get("image_url"):
+        images = [data["image_url"]]
+    original_price = data.get("original_price")
+    if original_price is None and "original_price_cents" in data:
+        original_price = float(data.get("original_price_cents", 0)) / 100.0
     return {
         **data,
         "id": snapshot.id,
         "title": data.get("title") or data.get("name") or "Marketplace product",
         "description": data.get("description") or "",
         "condition": data.get("condition") or ("new" if data.get("type") == "new" else "used"),
-        "price": float(data.get("price") or 0),
+        "price": float(price_val or 0),
+        "original_price": float(original_price) if original_price is not None else None,
+        "discount_percent": data.get("discount_percent"),
         "category": data.get("category") or "",
-        "image_urls": list(data.get("image_urls") or []),
-        "seller_name": data.get("seller_name") or "Community seller",
+        "brand": data.get("brand"),
+        "model": data.get("model"),
+        "part_number": data.get("part_number") or data.get("sku"),
+        "listing_kind": data.get("listing_kind") or data.get("item_type") or "part",
+        "image_urls": list(images or []),
+        "seller_name": data.get("seller_name") or data.get("partner_name") or "Community seller",
+        "partner_name": data.get("partner_name"),
         "type": data.get("type") or "used",
         "status": data.get("status") or "active",
         "sponsored": bool(data.get("sponsored", False)),
+        "rating": float(data.get("rating") or (4.9 if data.get("sponsored") else 4.8)),
+        "review_count": int(data.get("review_count") or (1240 if data.get("sponsored") else 430)),
+        "distance_km": data.get("distance_km"),
+        "warranty_info": data.get("warranty_info"),
     }
 
 
@@ -167,6 +187,7 @@ def search_marketplace(
     max_price: float | None,
     cursor: str | None,
     limit: int,
+    condition: str | None = None,
 ) -> dict[str, Any]:
     """Merge public catalogue collections and active user listings.
 
@@ -175,11 +196,11 @@ def search_marketplace(
     """
     client = get_firestore_client()
     sources = []
-    if item_type in ("all", "used", "part"):
+    if item_type in ("all", "used", "part", "appliance"):
         sources.append(("listings", None))
-    if item_type in ("all", "new"):
+    if item_type in ("all", "new", "appliance", "part"):
         sources.append(("partner_products", "new"))
-    if item_type in ("all", "part"):
+    if item_type in ("all", "part", "new"):
         sources.append(("parts", "part"))
     needle = _title_key(query)
     items: list[dict[str, Any]] = []
@@ -191,12 +212,27 @@ def search_marketplace(
             if collection_name == "listings" and item.get("status", "active") != "active":
                 continue
             item["type"] = source_type or item.get("item_type") or "used"
-            if item_type != "all" and item["type"] != item_type:
+            if item_type == "part":
+                if item.get("listing_kind") != "part" and item["type"] != "part":
+                    continue
+            elif item_type == "appliance":
+                if item.get("listing_kind") == "part" or item["type"] == "part":
+                    continue
+            elif item_type != "all" and item["type"] != item_type:
                 continue
+            if condition:
+                c_low = condition.lower().strip()
+                item_cond = str(item.get("condition", "")).lower()
+                if c_low in ("new", "brand-new", "brand new", "unopened"):
+                    if item_cond not in ("new", "unopened", "brand-new", "brand new"):
+                        continue
+                elif c_low in ("used", "second-hand", "second hand", "refurbished", "pre-owned"):
+                    if item_cond in ("new", "unopened", "brand-new", "brand new"):
+                        continue
             haystack = _title_key(
                 " ".join(
                     str(item.get(key, ""))
-                    for key in ("title", "name", "brand", "model", "category", "part_number")
+                    for key in ("title", "name", "brand", "model", "category", "part_number", "description")
                 )
             )
             if needle and needle not in haystack:

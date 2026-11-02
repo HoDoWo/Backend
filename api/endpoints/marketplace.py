@@ -15,9 +15,10 @@ marketplace_router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
 @marketplace_router.get("/search", response_model=schemas.MarketplaceSearchResponse)
 async def search_marketplace(
     q: str = Query(default="", max_length=120),
-    type: Literal["all", "new", "used", "part"] = "all",
+    type: Literal["all", "new", "used", "part", "appliance"] = "all",
     category: str | None = Query(default=None, max_length=80),
     brand: str | None = Query(default=None, max_length=80),
+    condition: str | None = Query(default=None, max_length=50),
     min_price: float | None = Query(default=None, ge=0),
     max_price: float | None = Query(default=None, ge=0),
     cursor: str | None = Query(default=None, max_length=200),
@@ -31,6 +32,7 @@ async def search_marketplace(
             item_type=type,
             category=category,
             brand=brand,
+            condition=condition,
             min_price=min_price,
             max_price=max_price,
             cursor=cursor,

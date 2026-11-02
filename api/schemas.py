@@ -65,3 +65,9 @@ class MarketplaceListingResponse(BaseModel):
     handover_methods: List[str] = Field(default_factory=list)
     pickup_zip: Optional[str] = None
     shipping_price_cents: Optional[int] = None
+    rating: Optional[float] = None
+    review_count: Optional[int] = None
+    distance_km: Optional[float] = None
+    warranty_info: Optional[str] = None
+    original_price: Optional[float] = None
+    discount_percent: Optional[int] = None

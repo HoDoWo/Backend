@@ -42,6 +42,25 @@ def test_search_returns_mixed_catalogue(monkeypatch):
     assert response.json()["items"][0]["sponsored"] is True
 
 
+def test_search_accepts_condition_and_classification_filters(monkeypatch):
+    captured_filters = {}
+
+    def mock_search(**kwargs):
+        captured_filters.update(kwargs)
+        return {"items": [], "next_cursor": None}
+
+    monkeypatch.setattr(firebase_store, "search_marketplace", mock_search)
+    response = client.get(
+        "/api/marketplace/search?q=pump&type=appliance&condition=brand-new&brand=Bosch",
+        headers=bearer(make_token()),
+    )
+
+    assert response.status_code == 200
+    assert captured_filters["item_type"] == "appliance"
+    assert captured_filters["condition"] == "brand-new"
+    assert captured_filters["brand"] == "Bosch"
+
+
 def test_create_listing_uses_authenticated_owner(monkeypatch):
     captured = {}
 

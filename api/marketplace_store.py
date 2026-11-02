@@ -40,6 +40,23 @@ def get_cart_items(uid: str) -> list[dict[str, Any]]:
     return [{**(doc.to_dict() or {}), "cart_item_id": doc.id} for doc in items]
 
 
+def get_cart_item(cart_item_id: str) -> dict[str, Any] | None:
+    snapshot = _db().collection("carts").document(cart_item_id).get()
+    return {**(snapshot.to_dict() or {}), "cart_item_id": cart_item_id} if snapshot.exists else None
+
+
+def save_cart_item(cart_item_id: str, data: dict[str, Any]) -> None:
+    _db().collection("carts").document(cart_item_id).set(data)
+
+
+def update_cart_item(cart_item_id: str, fields: dict[str, Any]) -> None:
+    _db().collection("carts").document(cart_item_id).update(fields)
+
+
+def delete_cart_item(cart_item_id: str) -> None:
+    _db().collection("carts").document(cart_item_id).delete()
+
+
 def get_item(product_type: str, product_id: str) -> dict[str, Any] | None:
     """Return the current catalogue document behind a cart line, or None."""
     collection, seller_field = PRODUCT_SOURCES[product_type]

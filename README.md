@@ -158,6 +158,7 @@ Ratings are stored in `manuals/{manual_id}/ratings/{user_uid}` with one
 toggleable rating per user. Configure `FIREBASE_PROJECT_ID` and either
 `FIREBASE_SERVICE_ACCOUNT_JSON` (a JSON string) or
 `GOOGLE_APPLICATION_CREDENTIALS` (a local service-account file path).
+<img width="4768" height="1947" alt="AdobeExpressPhotos_1cfa9bfd954242a38a89a422d152059c_CopyEdited" src="https://github.com/user-attachments/assets/9ace2589-7f66-47de-823f-390001cc3635" />
 
 ### Serverless execution time (risk 7)
 

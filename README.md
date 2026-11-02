@@ -80,10 +80,25 @@ Missing or invalid values fail fast with a clear message from `api/config.py`.
 | `GET` | `/api/manuals?limit=&bookmarked=` | Bearer JWT | Newest manuals of the user (Home, Recent Manuals), optionally only the bookmarked ones |
 | `GET` | `/api/manuals/popular?limit=` | Bearer JWT | Most searched and saved guides of all users (searches + 2 × saves), without user data |
 | `GET` | `/api/appliances/environmental-tip` | Bearer JWT | Daily energy-saving tip from the LLM, the same for the whole day |
+| `GET` | `/api/marketplace/cart` | Bearer JWT | The user's cart with current prices, availability and server-side totals |
+| `POST` | `/api/marketplace/cart/items` | Bearer JWT | Adds `{product_type, product_id, quantity}`; the same product again increases the quantity |
+| `PATCH` | `/api/marketplace/cart/items/{cart_item_id}` | Bearer JWT | Changes the quantity of one of the user's lines |
+| `DELETE` | `/api/marketplace/cart/items/{cart_item_id}` | Bearer JWT | Removes one of the user's lines |
 | `POST` | `/api/marketplace/checkout` | Bearer JWT | Turns the cart into one pending order per seller and returns the PaymentIntent `client_secret` |
 | `POST` | `/api/marketplace/stripe/webhook` | Stripe signature | Confirms or fails the orders of a checkout |
 | `GET` | `/api/marketplace/orders` | Bearer JWT | Purchase history of the user, newest first |
 | `GET` | `/api/marketplace/orders/{order_id}` | Bearer JWT | One order of the user (`403` for another user's order) |
+
+### Marketplace cart
+
+Every cart call returns the whole updated cart, so the app never computes a
+total itself. `product_type` is `new` (partner product), `part` (spare part) or
+`used` (second-hand listing). The backend refuses, with `409`, a sold listing,
+an out-of-stock quantity, a listing of your own, a second-hand listing with a
+quantity above 1 or added twice. An item that becomes unavailable after being
+added stays in the cart with `available: false` and its `unavailable_reason`,
+and is left out of `total_cents` and `item_count`. `price_changed` tells the
+user that the price is different from when the item was added.
 
 ### Marketplace checkout (Stripe test mode)
 
@@ -193,7 +208,6 @@ Ratings are stored in `manuals/{manual_id}/ratings/{user_uid}` with one
 toggleable rating per user. Configure `FIREBASE_PROJECT_ID` and either
 `FIREBASE_SERVICE_ACCOUNT_JSON` (a JSON string) or
 `GOOGLE_APPLICATION_CREDENTIALS` (a local service-account file path).
-<img width="4768" height="1947" alt="AdobeExpressPhotos_1cfa9bfd954242a38a89a422d152059c_CopyEdited" src="https://github.com/user-attachments/assets/9ace2589-7f66-47de-823f-390001cc3635" />
 
 ### Serverless execution time (risk 7)
 

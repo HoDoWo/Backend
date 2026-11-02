@@ -71,6 +71,26 @@ def public_order(order: dict[str, Any]) -> dict[str, Any]:
     return {field: order.get(field) for field in PUBLIC_ORDER_FIELDS}
 
 
+def availability_problem(uid: str, product_type: str, item: dict[str, Any] | None, quantity: int) -> str | None:
+    """Why ``uid`` cannot buy ``quantity`` of this catalogue item, or None if they can.
+
+    Shared by the cart (#42) and the checkout, so both refuse the same things.
+    """
+    price = item.get("price_cents") if item else None
+    if item is None or not isinstance(price, int) or isinstance(price, bool) or price <= 0:
+        return "not available"
+    if product_type == "used":
+        if item.get("status") != "active":
+            return "already sold"
+        if item["seller_id"] == uid:
+            return "you cannot buy your own listing"
+        if quantity != 1:
+            return "a second-hand listing has quantity 1"
+    elif int(item.get("stock") or 0) < quantity:
+        return "not enough stock"
+    return None
+
+
 def _priced_lines(uid: str, cart_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Resolve every cart line against the catalogue, or refuse the checkout."""
     store = get_store()
@@ -90,24 +110,11 @@ def _priced_lines(uid: str, cart_items: list[dict[str, Any]]) -> list[dict[str, 
             continue
 
         item = store.get_item(product_type, product_id)
-        price = item.get("price_cents") if item else None
-        if item is None or not isinstance(price, int) or price <= 0:
-            problems.append({"product_id": product_id, "reason": "not available"})
+        problem = availability_problem(uid, product_type, item, quantity)
+        if problem:
+            problems.append({"product_id": product_id, "reason": problem})
             continue
-
-        if product_type == "used":
-            if item.get("status") != "active":
-                problems.append({"product_id": product_id, "reason": "already sold"})
-                continue
-            if item["seller_id"] == uid:
-                problems.append({"product_id": product_id, "reason": "you cannot buy your own listing"})
-                continue
-            if quantity != 1:
-                problems.append({"product_id": product_id, "reason": "a second-hand listing has quantity 1"})
-                continue
-        elif int(item.get("stock") or 0) < quantity:
-            problems.append({"product_id": product_id, "reason": "not enough stock"})
-            continue
+        price = item["price_cents"]
 
         lines.append(
             {

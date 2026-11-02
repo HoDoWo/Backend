@@ -119,6 +119,45 @@ def get_openrouter_llm() -> langchain_openai.ChatOpenAI:
     )
     
 
+DEFAULT_STRIPE_CURRENCY = "eur"
+
+
+@dataclasses.dataclass(frozen=True)
+class StripeSettings:
+    """Stripe keys for the marketplace checkout (#43).
+
+    Without a secret key the checkout runs in simulated mode: orders are still
+    recorded, but flagged ``simulated`` and no payment is taken.
+    """
+
+    secret_key: str | None
+    webhook_secret: str | None
+    currency: str
+
+    @property
+    def enabled(self) -> bool:
+        return self.secret_key is not None
+
+
+def get_stripe_settings() -> StripeSettings:
+    """Return the Stripe settings, refusing anything that is not a test key."""
+    secret_key = get_optional_env("STRIPE_SECRET_KEY") or None
+    webhook_secret = get_optional_env("STRIPE_WEBHOOK_SECRET") or None
+    currency = (get_optional_env("STRIPE_CURRENCY", DEFAULT_STRIPE_CURRENCY) or DEFAULT_STRIPE_CURRENCY).lower()
+
+    # The marketplace is a demo: a live key must never reach this backend.
+    if secret_key and not secret_key.startswith(("sk_test_", "rk_test_")):
+        raise ConfigurationError(
+            "STRIPE_SECRET_KEY must be a Stripe test-mode key (sk_test_... or rk_test_...)."
+        )
+    if secret_key and not webhook_secret:
+        raise ConfigurationError(
+            "STRIPE_WEBHOOK_SECRET is required when STRIPE_SECRET_KEY is set, "
+            "otherwise paid orders are never confirmed."
+        )
+    return StripeSettings(secret_key=secret_key, webhook_secret=webhook_secret, currency=currency)
+
+
 def _client_ip(request: fastapi.Request) -> str:
     """Return the caller IP, honouring the proxy header Vercel sets."""
     forwarded = request.headers.get("x-forwarded-for")

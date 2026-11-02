@@ -8,3 +8,4 @@ python-dotenv
 slowapi
 firebase-admin
 aiofiles
+stripe

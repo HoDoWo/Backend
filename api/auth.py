@@ -35,7 +35,10 @@ logger = logging_config.get_logger(__name__)
 
 # Paths reachable without a token. CORS preflight (OPTIONS) is always allowed.
 # /health is public so uptime checks and Vercel do not need credentials.
-PUBLIC_PATHS = frozenset({"/health", "/docs", "/redoc", "/openapi.json"})
+# The Stripe webhook carries no JWT: it is verified by its Stripe-Signature.
+PUBLIC_PATHS = frozenset(
+    {"/health", "/docs", "/redoc", "/openapi.json", "/api/marketplace/stripe/webhook"}
+)
 
 def get_current_user(request: fastapi.Request) -> dict:
     if hasattr(request.state, "user") and request.state.user:

@@ -89,6 +89,43 @@ Missing or invalid values fail fast with a clear message from `api/config.py`.
 | `GET` | `/api/marketplace/orders` | Bearer JWT | Purchase history of the user, newest first |
 | `GET` | `/api/marketplace/orders/{order_id}` | Bearer JWT | One order of the user (`403` for another user's order) |
 
+### Marketplace catalogue: seed and partner feeds
+
+The catalogue is never scraped from partner websites. Partners send a feed
+file (CSV or JSON) and `scripts/import_partner_feed.py` loads it into
+Firestore; the same script loads the curated demo seed in `scripts/seed/`.
+It uses the Firebase variables of `.env`.
+
+```bash
+python scripts/import_partner_feed.py --seed --dry-run      # what would change
+python scripts/import_partner_feed.py --seed                # partners, products, parts, compatibility
+python scripts/import_partner_feed.py --feed voltacasa=scripts/feeds/example-voltacasa.json --dry-run
+```
+
+- **Feed format** (one row or object per product): `sku`, `title`, `brand`,
+  `model`, `category`, `price` (`24.90` or `24,90`) or `price_cents`, `stock`,
+  and optionally `description`, `image_url` (https), `sponsored`. A CSV may
+  repeat `partner_id`; a JSON file is a list or `{"partner_id": ..., "products": [...]}`.
+- **No duplicates**: ids are stable (`partners/{id}`,
+  `partner_products/{partner_id}_{sku}`, `parts/{sku}`,
+  `part_compatibility/{sku}_{brand}_{model}`); running it twice changes nothing
+  and keeps `created_at`.
+- **Report**: new / updated (with the changed fields) / unchanged / rejected.
+  Invalid rows are skipped with their line number and reason.
+- With `--full` the feed is the partner's whole catalogue: its products missing
+  from the feed get `stock: 0`. They are never deleted, because orders may
+  point at them. Without `--full` a feed only adds and updates products.
+- A feed that cannot be read (missing file, bad JSON, unknown partner) is
+  reported and the others are still imported; the exit code is then `1`. The
+  `--seed` run also exits with `1` if the seed is below the #33 minimums (4
+  partners on 2+ tiers, 60 products, 40 parts, 10 compatible models).
+
+The seed data is **fictional demo data**: the partners and the appliance brands
+they sell (Aurora, Kelvo, Brezza, Nordwind) are invented. The parts are
+"compatible replacements" for 10 real appliance models that users photograph
+(for example Bosch WAN28201GB), so the diagnosis can suggest a part; these
+compatibility rows are demo data, not manufacturer data.
+
 ### Marketplace cart
 
 Every cart call returns the whole updated cart, so the app never computes a

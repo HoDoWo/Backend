@@ -1,0 +1,5 @@
+id,name,partner_tier,commission_pct,active
+voltacasa,VoltaCasa (demo partner),3,12,true
+nordhome,NordHome Appliances (demo partner),2,10,true
+fixparts-hub,FixParts Hub (demo partner),2,8,true
+ecoricambi,EcoRicambi (demo partner),1,6,true

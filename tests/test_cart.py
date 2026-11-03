@@ -71,7 +71,7 @@ def test_adding_the_same_product_again_increases_the_quantity(store):
         (("new", "oven-9"), 1, 409, "not enough stock"),
         (("part", "pump-1"), 4, 409, "not enough stock"),
         (("used", "my-sofa"), 1, 409, "you cannot buy your own listing"),
-        (("used", "fridge-2"), 2, 409, "a second-hand listing has quantity 1"),
+        (("used", "fridge-2"), 2, 409, "not enough stock"),  # listing quantity defaults to 1
         (("part", "missing"), 1, 404, "product not found"),
     ],
 )
@@ -83,9 +83,16 @@ def test_unbuyable_products_are_refused(store, product, quantity, status, detail
     assert store.cart(BUYER) == []
 
 
-def test_a_listing_cannot_be_added_twice(store):
+def test_a_single_listing_cannot_be_added_twice(store):
     add("used", "fridge-2")
 
+    assert add("used", "fridge-2").status_code == 409
+
+
+def test_a_listing_with_several_items_can_be_bought_up_to_its_quantity(store):
+    store.items[("used", "fridge-2")]["quantity"] = 2
+
+    assert add("used", "fridge-2", 2).json()["items"][0]["quantity"] == 2
     assert add("used", "fridge-2").status_code == 409
 
 
@@ -159,3 +166,9 @@ def test_the_cart_feeds_the_checkout(store, monkeypatch):
 
 def test_cart_requires_a_token(store):
     assert TestClient(app).get(CART).status_code == 401
+
+
+def test_a_listing_with_nothing_left_cannot_be_added(store):
+    store.items[("used", "fridge-2")]["quantity"] = 0
+
+    assert add("used", "fridge-2").json()["detail"] == "not enough stock"

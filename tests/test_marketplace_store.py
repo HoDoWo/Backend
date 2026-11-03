@@ -13,6 +13,10 @@ class FakeDoc:
     def __init__(self, db, path):
         self.db, self.path = db, path
 
+    def get(self):
+        data = self.db.docs.get(self.path)
+        return type("Snap", (), {"exists": data is not None, "to_dict": lambda _self: data})()
+
     def create(self, data):
         if self.path in self.db.docs:
             raise google_exceptions.AlreadyExists("exists")
@@ -84,6 +88,8 @@ def test_fulfil_writes_status_listing_stock_and_cart_in_one_batch(db):
         "cart_item_ids": ["c1", "c2"],
     }
 
+    db.docs["listings/fridge-2"] = {"status": "active"}  # no quantity: one item
+
     marketplace_store.fulfil_order(order, paid_at=123)
 
     assert len(db.commits) == 1
@@ -97,4 +103,15 @@ def test_fulfil_writes_status_listing_stock_and_cart_in_one_batch(db):
     }
     fields = {path: f for _, path, f in db.commits[0]}
     assert fields["orders/o1"] == {"status": "paid", "paid_at": 123}
-    assert fields["listings/fridge-2"] == {"status": "sold"}
+    assert fields["listings/fridge-2"] == {"quantity": 0, "updated_at": 123, "status": "sold", "sold_at": 123}
+
+
+def test_a_listing_with_items_left_stays_active(db):
+    db.docs["listings/pans"] = {"status": "active", "quantity": 3}
+    order = {"order_id": "o2", "uid": "b", "cart_item_ids": [],
+             "items": [{"product_type": "used", "product_id": "pans", "quantity": 1}]}
+
+    marketplace_store.fulfil_order(order, paid_at=5)
+
+    fields = {path: f for _, path, f in db.commits[0]}
+    assert fields["listings/pans"] == {"quantity": 2, "updated_at": 5}

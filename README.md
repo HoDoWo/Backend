@@ -94,8 +94,8 @@ Missing or invalid values fail fast with a clear message from `api/config.py`.
 Every cart call returns the whole updated cart, so the app never computes a
 total itself. `product_type` is `new` (partner product), `part` (spare part) or
 `used` (second-hand listing). The backend refuses, with `409`, a sold listing,
-an out-of-stock quantity, a listing of your own, a second-hand listing with a
-quantity above 1 or added twice. An item that becomes unavailable after being
+more items than the catalogue `stock` or the listing `quantity` (default 1),
+or a listing of your own. An item that becomes unavailable after being
 added stays in the cart with `available: false` and its `unavailable_reason`,
 and is left out of `total_cents` and `item_count`. `price_changed` tells the
 user that the price is different from when the item was added.

@@ -31,15 +31,36 @@ service cloud.firestore {
                     && !request.resource.data.keys().hasAny([
                       'sponsored', 'partner_tier', 'partner_id', 'commission_pct'
                     ]);
-      allow update, delete: if owns(resource);
+      // The owner may edit a listing but not take it over or make it sponsored.
+      allow update: if owns(resource)
+                    && request.resource.data.owner_uid == resource.data.owner_uid
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                      'sponsored', 'partner_tier', 'partner_id', 'commission_pct'
+                    ]);
+      allow delete: if owns(resource);
     }
 
-    match /carts/{uid} {
-      allow read, write: if signedIn() && uid == request.auth.uid;
+    match /part_compatibility/{id} {
+      allow read: if true;
+      allow write: if false;
     }
 
-    match /orders/{uid} {
-      allow read, write: if signedIn() && uid == request.auth.uid;
+    // One document per cart line (CART_ITEM) with the owner's uid. Only the
+    // backend writes it, so prices and availability are always checked.
+    match /carts/{lineId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Orders are created and confirmed only by the backend (checkout + Stripe webhook).
+    match /orders/{orderId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Stripe webhook idempotency markers: backend only.
+    match /stripe_events/{eventId} {
+      allow read, write: if false;
     }
   }
 }

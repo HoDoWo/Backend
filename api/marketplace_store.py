@@ -117,7 +117,8 @@ def release_event(event_id: str) -> None:
 def fulfil_order(order: dict[str, Any], paid_at: int) -> None:
     """Mark an order paid and apply it in one batch.
 
-    Listings become sold, stock is decremented and the cart lines are removed,
+    Listing quantity and catalogue stock are decremented (a listing becomes
+    sold at 0) and the cart lines are removed,
     so the order is never "paid" without its side effects (or the reverse).
     """
     from firebase_admin import firestore
@@ -132,7 +133,14 @@ def fulfil_order(order: dict[str, Any], paid_at: int) -> None:
         collection, _ = PRODUCT_SOURCES[item["product_type"]]
         ref = db.collection(collection).document(item["product_id"])
         if item["product_type"] == "used":
-            batch.update(ref, {"status": "sold"})
+            snapshot = ref.get()
+            listing = (snapshot.to_dict() or {}) if snapshot.exists else {}
+            offered = 1 if listing.get("quantity") is None else int(listing["quantity"])
+            remaining = max(offered - int(item["quantity"]), 0)
+            fields = {"quantity": remaining, "updated_at": paid_at}
+            if remaining == 0:
+                fields.update(status="sold", sold_at=paid_at)
+            batch.update(ref, fields)
         else:
             batch.update(ref, {"stock": firestore.Increment(-int(item["quantity"]))})
     for cart_item_id in order.get("cart_item_ids", []):

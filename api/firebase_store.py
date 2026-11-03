@@ -121,6 +121,29 @@ def firestore_server_timestamp():
     return firestore.SERVER_TIMESTAMP
 
 
+def _epoch_ms(value: Any) -> int:
+    """Epoch milliseconds from an int or a Firestore timestamp; 0 when missing."""
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, datetime):
+        moment = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return int(moment.timestamp() * 1000)
+    return 0
+
+
+def _in_stock(collection_name: str, item: dict[str, Any]) -> bool:
+    """Same availability rule as the cart: catalogue stock, listing quantity."""
+    if collection_name == "listings":
+        quantity = item.get("quantity")
+        return item.get("status", "active") == "active" and (quantity is None or int(quantity) > 0)
+    if "stock" in item:
+        return int(item.get("stock") or 0) > 0
+    # Older catalogue documents without stock still use the available flag.
+    return bool(item.get("available", True))
+
+
 def _marketplace_item(snapshot) -> dict[str, Any]:
     data = snapshot.to_dict() or {}
     price_val = data.get("price")
@@ -152,8 +175,10 @@ def _marketplace_item(snapshot) -> dict[str, Any]:
         "type": data.get("type") or "used",
         "status": data.get("status") or "active",
         "sponsored": bool(data.get("sponsored", False)),
-        "rating": float(data.get("rating") or (4.9 if data.get("sponsored") else 4.8)),
-        "review_count": int(data.get("review_count") or (1240 if data.get("sponsored") else 430)),
+        # Only real reviews: without them the app shows no stars.
+        "rating": float(data["rating"]) if data.get("rating") is not None else None,
+        "review_count": int(data["review_count"]) if data.get("review_count") is not None else None,
+        "created_at": _epoch_ms(data.get("created_at")),
         "distance_km": data.get("distance_km"),
         "warranty_info": data.get("warranty_info"),
     }
@@ -165,7 +190,9 @@ def create_marketplace_listing(
     if not user_uid:
         raise ValueError("authenticated user uid is required")
     ref = get_firestore_client().collection("listings").document()
-    item_type = "part" if payload["listing_kind"] == "part" else "used"
+    # Every user listing is second-hand ("used"), so the cart and the checkout
+    # find it in `listings`; listing_kind still says if it is a part or an appliance.
+    item_type = "used"
     title = payload["title"].strip()
     data = {
         **payload,
@@ -178,7 +205,7 @@ def create_marketplace_listing(
         "type": item_type,
         "status": "active",
         "sponsored": False,
-        "created_at": firestore_server_timestamp(),
+        "created_at": int(datetime.now(timezone.utc).timestamp() * 1000),
     }
     data.pop("price", None)
     ref.set(data)
@@ -215,7 +242,9 @@ def search_marketplace(
     client = get_firestore_client()
     sources = []
     if item_type in ("all", "used", "part", "appliance"):
-        sources.append(("listings", None))
+        # User listings are always "used" for the cart, whatever item_type an
+        # older document stored.
+        sources.append(("listings", "used"))
     if item_type in ("all", "new", "appliance", "part"):
         sources.append(("partner_products", "new"))
     if item_type in ("all", "part", "new"):
@@ -225,11 +254,9 @@ def search_marketplace(
     for collection_name, source_type in sources:
         for snapshot in client.collection(collection_name).stream():
             item = _marketplace_item(snapshot)
-            if collection_name != "listings" and not item.get("available", True):
+            if not _in_stock(collection_name, item):
                 continue
-            if collection_name == "listings" and item.get("status", "active") != "active":
-                continue
-            item["type"] = source_type or item.get("item_type") or "used"
+            item["type"] = source_type
             if item_type == "part":
                 if item.get("listing_kind") != "part" and item["type"] != "part":
                     continue
@@ -272,17 +299,16 @@ def search_marketplace(
             -item["_relevance"],
             -int(bool(item.get("sponsored"))),
             -item["_partner_weight"],
-            str(item.get("created_at") or ""),
+            -item["created_at"],  # newest first
+            item["type"],
             item["id"],
         )
     )
-    start = 0
-    if cursor:
-        ids = [item["id"] for item in items]
-        if cursor in ids:
-            start = ids.index(cursor) + 1
+    # The same id can exist in two collections, so the cursor is "type:id".
+    keys = [f'{item["type"]}:{item["id"]}' for item in items]
+    start = keys.index(cursor) + 1 if cursor in keys else 0
     page = items[start : start + limit]
-    next_cursor = page[-1]["id"] if len(page) == limit else None
+    next_cursor = keys[start + limit - 1] if len(page) == limit and start + limit < len(items) else None
     for item in page:
         item.pop("_relevance", None)
         item.pop("_partner_weight", None)

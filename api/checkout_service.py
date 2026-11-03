@@ -84,9 +84,12 @@ def availability_problem(uid: str, product_type: str, item: dict[str, Any] | Non
             return "already sold"
         if item["seller_id"] == uid:
             return "you cannot buy your own listing"
-        if quantity != 1:
-            return "a second-hand listing has quantity 1"
-    elif int(item.get("stock") or 0) < quantity:
+        # A listing can offer several identical items (the sell form has a quantity).
+        # 0 means nothing left; a missing quantity means one item.
+        available = 1 if item.get("quantity") is None else int(item["quantity"])
+    else:
+        available = int(item.get("stock") or 0)
+    if available < quantity:
         return "not enough stock"
     return None
 

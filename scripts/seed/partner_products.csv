@@ -1,0 +1,61 @@
+partner_id,sku,title,brand,model,category,price,stock,description,image_url,sponsored
+nordhome,NOR-AW-107,Aurora Essential washing machine 8 kg,Aurora,AW-107,washing machine,399.00,3,Reliable everyday model with the core programmes.,,false
+voltacasa,VOL-AW-114,Aurora Comfort washing machine 8 kg,Aurora,AW-114,washing machine,459.00,6,"Quieter motor, delay start and an eco programme.",,false
+nordhome,NOR-AW-121,Aurora Premium washing machine 8 kg,Aurora,AW-121,washing machine,539.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+ecoricambi,ECO-KW-128,Kelvo Essential washing machine 8 kg,Kelvo,KW-128,washing machine,459.00,3,Reliable everyday model with the core programmes.,,false
+voltacasa,VOL-KW-135,Kelvo Comfort washing machine 8 kg,Kelvo,KW-135,washing machine,519.00,6,"Quieter motor, delay start and an eco programme.",,false
+nordhome,NOR-KW-142,Kelvo Premium washing machine 8 kg,Kelvo,KW-142,washing machine,599.00,0,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+voltacasa,VOL-NW-149,Nordwind Essential washing machine 8 kg,Nordwind,NW-149,washing machine,529.00,3,Reliable everyday model with the core programmes.,,false
+nordhome,NOR-NW-156,Nordwind Comfort washing machine 8 kg,Nordwind,NW-156,washing machine,589.00,6,"Quieter motor, delay start and an eco programme.",,false
+ecoricambi,ECO-NW-163,Nordwind Premium washing machine 8 kg,Nordwind,NW-163,washing machine,669.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+voltacasa,VOL-AD-170,Aurora Essential dishwasher 60 cm,Aurora,AD-170,dishwasher,379.00,3,Reliable everyday model with the core programmes.,,false
+nordhome,NOR-AD-177,Aurora Comfort dishwasher 60 cm,Aurora,AD-177,dishwasher,439.00,6,"Quieter motor, delay start and an eco programme.",,true
+voltacasa,VOL-AD-184,Aurora Premium dishwasher 60 cm,Aurora,AD-184,dishwasher,519.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+nordhome,NOR-BD-191,Brezza Essential dishwasher 60 cm,Brezza,BD-191,dishwasher,429.00,3,Reliable everyday model with the core programmes.,,false
+ecoricambi,ECO-BD-198,Brezza Comfort dishwasher 60 cm,Brezza,BD-198,dishwasher,489.00,6,"Quieter motor, delay start and an eco programme.",,false
+voltacasa,VOL-BD-205,Brezza Premium dishwasher 60 cm,Brezza,BD-205,dishwasher,569.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+nordhome,NOR-ND-212,Nordwind Essential dishwasher 60 cm,Nordwind,ND-212,dishwasher,499.00,3,Reliable everyday model with the core programmes.,,false
+voltacasa,VOL-ND-219,Nordwind Comfort dishwasher 60 cm,Nordwind,ND-219,dishwasher,559.00,6,"Quieter motor, delay start and an eco programme.",,false
+nordhome,NOR-ND-226,Nordwind Premium dishwasher 60 cm,Nordwind,ND-226,dishwasher,639.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+ecoricambi,ECO-KF-233,Kelvo Essential fridge freezer,Kelvo,KF-233,refrigerator,619.00,3,Reliable everyday model with the core programmes.,,false
+voltacasa,VOL-KF-240,Kelvo Comfort fridge freezer,Kelvo,KF-240,refrigerator,679.00,6,"Quieter motor, delay start and an eco programme.",,false
+nordhome,NOR-KF-247,Kelvo Premium fridge freezer,Kelvo,KF-247,refrigerator,759.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+voltacasa,VOL-BF-254,Brezza Essential fridge freezer,Brezza,BF-254,refrigerator,549.00,3,Reliable everyday model with the core programmes.,,true
+nordhome,NOR-BF-261,Brezza Comfort fridge freezer,Brezza,BF-261,refrigerator,609.00,6,"Quieter motor, delay start and an eco programme.",,false
+ecoricambi,ECO-BF-268,Brezza Premium fridge freezer,Brezza,BF-268,refrigerator,689.00,0,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+voltacasa,VOL-NF-275,Nordwind Essential fridge freezer,Nordwind,NF-275,refrigerator,749.00,3,Reliable everyday model with the core programmes.,,false
+nordhome,NOR-NF-282,Nordwind Comfort fridge freezer,Nordwind,NF-282,refrigerator,809.00,6,"Quieter motor, delay start and an eco programme.",,false
+voltacasa,VOL-NF-289,Nordwind Premium fridge freezer,Nordwind,NF-289,refrigerator,889.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+nordhome,NOR-AO-296,Aurora Essential built-in oven,Aurora,AO-296,oven,329.00,3,Reliable everyday model with the core programmes.,,false
+ecoricambi,ECO-AO-303,Aurora Comfort built-in oven,Aurora,AO-303,oven,389.00,6,"Quieter motor, delay start and an eco programme.",,false
+voltacasa,VOL-AO-310,Aurora Premium built-in oven,Aurora,AO-310,oven,469.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+nordhome,NOR-KO-317,Kelvo Essential built-in oven,Kelvo,KO-317,oven,419.00,3,Reliable everyday model with the core programmes.,,false
+voltacasa,VOL-KO-324,Kelvo Comfort built-in oven,Kelvo,KO-324,oven,479.00,6,"Quieter motor, delay start and an eco programme.",,false
+nordhome,NOR-KO-331,Kelvo Premium built-in oven,Kelvo,KO-331,oven,559.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,true
+ecoricambi,ECO-BT-338,Brezza Essential heat pump dryer 8 kg,Brezza,BT-338,dryer,469.00,3,Reliable everyday model with the core programmes.,,false
+voltacasa,VOL-BT-345,Brezza Comfort heat pump dryer 8 kg,Brezza,BT-345,dryer,529.00,6,"Quieter motor, delay start and an eco programme.",,false
+nordhome,NOR-BT-352,Brezza Premium heat pump dryer 8 kg,Brezza,BT-352,dryer,609.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+voltacasa,VOL-NT-359,Nordwind Essential heat pump dryer 8 kg,Nordwind,NT-359,dryer,559.00,3,Reliable everyday model with the core programmes.,,false
+nordhome,NOR-NT-366,Nordwind Comfort heat pump dryer 8 kg,Nordwind,NT-366,dryer,619.00,6,"Quieter motor, delay start and an eco programme.",,false
+ecoricambi,ECO-NT-373,Nordwind Premium heat pump dryer 8 kg,Nordwind,NT-373,dryer,699.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+voltacasa,VOL-AM-380,Aurora Essential microwave 25 L,Aurora,AM-380,microwave,129.00,3,Reliable everyday model with the core programmes.,,false
+nordhome,NOR-AM-387,Aurora Comfort microwave 25 L,Aurora,AM-387,microwave,189.00,6,"Quieter motor, delay start and an eco programme.",,false
+voltacasa,VOL-AM-394,Aurora Premium microwave 25 L,Aurora,AM-394,microwave,269.00,0,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+nordhome,NOR-KM-401,Kelvo Essential microwave 25 L,Kelvo,KM-401,microwave,159.00,3,Reliable everyday model with the core programmes.,,false
+ecoricambi,ECO-KM-408,Kelvo Comfort microwave 25 L,Kelvo,KM-408,microwave,219.00,6,"Quieter motor, delay start and an eco programme.",,true
+voltacasa,VOL-KM-415,Kelvo Premium microwave 25 L,Kelvo,KM-415,microwave,299.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+nordhome,NOR-BH-422,Brezza Essential induction hob 60 cm,Brezza,BH-422,hob,289.00,3,Reliable everyday model with the core programmes.,,false
+voltacasa,VOL-BH-429,Brezza Comfort induction hob 60 cm,Brezza,BH-429,hob,349.00,6,"Quieter motor, delay start and an eco programme.",,false
+nordhome,NOR-BH-436,Brezza Premium induction hob 60 cm,Brezza,BH-436,hob,429.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+ecoricambi,ECO-NH-443,Nordwind Essential induction hob 60 cm,Nordwind,NH-443,hob,359.00,3,Reliable everyday model with the core programmes.,,false
+voltacasa,VOL-NH-450,Nordwind Comfort induction hob 60 cm,Nordwind,NH-450,hob,419.00,6,"Quieter motor, delay start and an eco programme.",,false
+nordhome,NOR-NH-457,Nordwind Premium induction hob 60 cm,Nordwind,NH-457,hob,499.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+voltacasa,VOL-KC-464,Kelvo Essential bean-to-cup coffee machine,Kelvo,KC-464,coffee machine,199.00,3,Reliable everyday model with the core programmes.,,false
+nordhome,NOR-KC-471,Kelvo Comfort bean-to-cup coffee machine,Kelvo,KC-471,coffee machine,259.00,6,"Quieter motor, delay start and an eco programme.",,false
+ecoricambi,ECO-KC-478,Kelvo Premium bean-to-cup coffee machine,Kelvo,KC-478,coffee machine,339.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+voltacasa,VOL-AC-485,Aurora Essential bean-to-cup coffee machine,Aurora,AC-485,coffee machine,249.00,3,Reliable everyday model with the core programmes.,,true
+nordhome,NOR-AC-492,Aurora Comfort bean-to-cup coffee machine,Aurora,AC-492,coffee machine,309.00,6,"Quieter motor, delay start and an eco programme.",,false
+voltacasa,VOL-AC-499,Aurora Premium bean-to-cup coffee machine,Aurora,AC-499,coffee machine,389.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false
+nordhome,NOR-BC-506,Brezza Essential bean-to-cup coffee machine,Brezza,BC-506,coffee machine,229.00,3,Reliable everyday model with the core programmes.,,false
+ecoricambi,ECO-BC-513,Brezza Comfort bean-to-cup coffee machine,Brezza,BC-513,coffee machine,289.00,6,"Quieter motor, delay start and an eco programme.",,false
+voltacasa,VOL-BC-520,Brezza Premium bean-to-cup coffee machine,Brezza,BC-520,coffee machine,369.00,4,"Steam / smart features, A-class efficiency and a 3-year warranty.",,false

@@ -1,0 +1,17 @@
+{
+  "partner_id": "voltacasa",
+  "products": [
+    {
+      "sku": "VOL-AW-114",
+      "title": "Aurora Comfort washing machine 8 kg",
+      "brand": "Aurora",
+      "model": "AW-114",
+      "category": "washing machine",
+      "price": "449.00",
+      "stock": 4,
+      "description": "Quieter motor, delay start and an eco programme.",
+      "image_url": null,
+      "sponsored": true
+    }
+  ]
+}

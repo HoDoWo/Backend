@@ -121,6 +121,175 @@ def firestore_server_timestamp():
     return firestore.SERVER_TIMESTAMP
 
 
+def _marketplace_item(snapshot) -> dict[str, Any]:
+    data = snapshot.to_dict() or {}
+    price_val = data.get("price")
+    if price_val is None and "price_cents" in data:
+        price_val = float(data.get("price_cents", 0)) / 100.0
+    images = data.get("image_urls")
+    if not images and data.get("image_url"):
+        images = [data["image_url"]]
+    original_price = data.get("original_price")
+    if original_price is None and "original_price_cents" in data:
+        original_price = float(data.get("original_price_cents", 0)) / 100.0
+    return {
+        **data,
+        "id": snapshot.id,
+        "title": data.get("title") or data.get("name") or "Marketplace product",
+        "description": data.get("description") or "",
+        "condition": data.get("condition") or ("new" if data.get("type") == "new" else "used"),
+        "price": float(price_val or 0),
+        "original_price": float(original_price) if original_price is not None else None,
+        "discount_percent": data.get("discount_percent"),
+        "category": data.get("category") or "",
+        "brand": data.get("brand"),
+        "model": data.get("model"),
+        "part_number": data.get("part_number") or data.get("sku"),
+        "listing_kind": data.get("listing_kind") or data.get("item_type") or "part",
+        "image_urls": list(images or []),
+        "seller_name": data.get("seller_name") or data.get("partner_name") or "Community seller",
+        "partner_name": data.get("partner_name"),
+        "type": data.get("type") or "used",
+        "status": data.get("status") or "active",
+        "sponsored": bool(data.get("sponsored", False)),
+        "rating": float(data.get("rating") or (4.9 if data.get("sponsored") else 4.8)),
+        "review_count": int(data.get("review_count") or (1240 if data.get("sponsored") else 430)),
+        "distance_km": data.get("distance_km"),
+        "warranty_info": data.get("warranty_info"),
+    }
+
+
+def create_marketplace_listing(
+    user_uid: str, payload: dict[str, Any], seller_name: str
+) -> dict[str, Any]:
+    if not user_uid:
+        raise ValueError("authenticated user uid is required")
+    ref = get_firestore_client().collection("listings").document()
+    item_type = "part" if payload["listing_kind"] == "part" else "used"
+    title = payload["title"].strip()
+    data = {
+        **payload,
+        "title": title,
+        "item_type": item_type,
+        "price_cents": round(float(payload["price"]) * 100),
+        "title_normalised": _title_key(title),
+        "owner_uid": user_uid,
+        "seller_name": seller_name,
+        "type": item_type,
+        "status": "active",
+        "sponsored": False,
+        "created_at": firestore_server_timestamp(),
+    }
+    data.pop("price", None)
+    ref.set(data)
+    return {**data, "id": ref.id, "price": float(payload["price"])}
+
+
+def delete_marketplace_listing(user_uid: str, listing_id: str) -> bool:
+    ref = get_firestore_client().collection("listings").document(listing_id)
+    snapshot = ref.get()
+    if not snapshot.exists:
+        return False
+    if (snapshot.to_dict() or {}).get("owner_uid") != user_uid:
+        raise LookupError("listing is not owned by the current user")
+    ref.delete()
+    return True
+
+
+def search_marketplace(
+    query: str,
+    item_type: str,
+    category: str | None,
+    brand: str | None,
+    min_price: float | None,
+    max_price: float | None,
+    cursor: str | None,
+    limit: int,
+    condition: str | None = None,
+) -> dict[str, Any]:
+    """Merge public catalogue collections and active user listings.
+
+    The Admin SDK reads the catalogue, but only backend-controlled partner
+    fields (`partner_tier`, `sponsored`) influence ranking.
+    """
+    client = get_firestore_client()
+    sources = []
+    if item_type in ("all", "used", "part", "appliance"):
+        sources.append(("listings", None))
+    if item_type in ("all", "new", "appliance", "part"):
+        sources.append(("partner_products", "new"))
+    if item_type in ("all", "part", "new"):
+        sources.append(("parts", "part"))
+    needle = _title_key(query)
+    items: list[dict[str, Any]] = []
+    for collection_name, source_type in sources:
+        for snapshot in client.collection(collection_name).stream():
+            item = _marketplace_item(snapshot)
+            if collection_name != "listings" and not item.get("available", True):
+                continue
+            if collection_name == "listings" and item.get("status", "active") != "active":
+                continue
+            item["type"] = source_type or item.get("item_type") or "used"
+            if item_type == "part":
+                if item.get("listing_kind") != "part" and item["type"] != "part":
+                    continue
+            elif item_type == "appliance":
+                if item.get("listing_kind") == "part" or item["type"] == "part":
+                    continue
+            elif item_type != "all" and item["type"] != item_type:
+                continue
+            if condition:
+                c_low = condition.lower().strip()
+                item_cond = str(item.get("condition", "")).lower()
+                if c_low in ("new", "brand-new", "brand new", "unopened"):
+                    if item_cond not in ("new", "unopened", "brand-new", "brand new"):
+                        continue
+                elif c_low in ("used", "second-hand", "second hand", "refurbished", "pre-owned"):
+                    if item_cond in ("new", "unopened", "brand-new", "brand new"):
+                        continue
+            haystack = _title_key(
+                " ".join(
+                    str(item.get(key, ""))
+                    for key in ("title", "name", "brand", "model", "category", "part_number", "description")
+                )
+            )
+            if needle and needle not in haystack:
+                continue
+            if category and str(item.get("category", "")).lower() != category.lower():
+                continue
+            if brand and str(item.get("brand", "")).lower() != brand.lower():
+                continue
+            price = float(item.get("price", 0))
+            if min_price is not None and price < min_price:
+                continue
+            if max_price is not None and price > max_price:
+                continue
+            item["_relevance"] = 1 if needle and needle in _title_key(str(item.get("title") or item.get("name"))) else 0
+            item["_partner_weight"] = int(item.get("partner_tier", 0)) if source_type == "new" else 0
+            items.append(item)
+    items.sort(
+        key=lambda item: (
+            -item["_relevance"],
+            -int(bool(item.get("sponsored"))),
+            -item["_partner_weight"],
+            str(item.get("created_at") or ""),
+            item["id"],
+        )
+    )
+    start = 0
+    if cursor:
+        ids = [item["id"] for item in items]
+        if cursor in ids:
+            start = ids.index(cursor) + 1
+    page = items[start : start + limit]
+    next_cursor = page[-1]["id"] if len(page) == limit else None
+    for item in page:
+        item.pop("_relevance", None)
+        item.pop("_partner_weight", None)
+        item.setdefault("partner_name", item.get("partner_name") if item["type"] == "new" else None)
+    return {"items": page, "next_cursor": next_cursor}
+
+
 def update_bookmark(user_uid: str, manual_id: str, is_bookmarked: bool) -> bool:
     ref = _manual_ref(manual_id)
     snapshot = ref.get()

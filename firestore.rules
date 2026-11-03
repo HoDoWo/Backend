@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owns(resource) {
+      return signedIn() && resource.data.owner_uid == request.auth.uid;
+    }
+
+    match /partner_products/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /partners/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /parts/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /listings/{id} {
+      allow read: if resource.data.status == 'active' || owns(resource);
+      allow create: if signedIn()
+                    && request.resource.data.owner_uid == request.auth.uid
+                    && !request.resource.data.keys().hasAny([
+                      'sponsored', 'partner_tier', 'partner_id', 'commission_pct'
+                    ]);
+      allow update, delete: if owns(resource);
+    }
+
+    match /carts/{uid} {
+      allow read, write: if signedIn() && uid == request.auth.uid;
+    }
+
+    match /orders/{uid} {
+      allow read, write: if signedIn() && uid == request.auth.uid;
+    }
+  }
+}

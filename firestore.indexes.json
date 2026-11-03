@@ -35,7 +35,7 @@
       "fields": [
         { "fieldPath": "brand", "order": "ASCENDING" },
         { "fieldPath": "model", "order": "ASCENDING" },
-        { "fieldPath": "available", "order": "ASCENDING" }
+        { "fieldPath": "stock", "order": "ASCENDING" }
       ]
     }
   ],

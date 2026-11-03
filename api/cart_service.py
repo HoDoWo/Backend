@@ -116,8 +116,6 @@ def add_item(uid: str, product_type: str, product_id: str, quantity: int) -> dic
         raise CartError(409, f"the cart can hold at most {MAX_LINES} different products")
 
     new_quantity = quantity + (existing.get("quantity", 0) if existing else 0)
-    if product_type == "used" and existing is not None:
-        raise CartError(409, "this listing is already in your cart")
     if new_quantity > MAX_QUANTITY:
         raise CartError(422, f"the quantity cannot be more than {MAX_QUANTITY}")
 

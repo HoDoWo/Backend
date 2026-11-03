@@ -87,7 +87,10 @@ class FakeStore:
         for item in order["items"]:
             stored = self.items[(item["product_type"], item["product_id"])]
             if item["product_type"] == "used":
-                stored["status"] = "sold"
+                offered = 1 if stored.get("quantity") is None else stored["quantity"]
+                stored["quantity"] = max(offered - item["quantity"], 0)
+                if stored["quantity"] == 0:
+                    stored["status"] = "sold"
             else:
                 stored["stock"] -= item["quantity"]
         for cart_item_id in order["cart_item_ids"]:

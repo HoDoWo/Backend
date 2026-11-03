@@ -1,3 +1,4 @@
+import datetime
 import os
 import pathlib
 from typing import Any
@@ -12,7 +13,6 @@ import reinforcement
 import request_helpers
 import response_formatting
 import time_budget
-from firebase_admin import storage
 from starlette import datastructures
 
 logger = logging_config.get_logger(__name__)
@@ -119,9 +119,11 @@ def _persist_generated_manual(
 
     if image_bytes:
         try:
-            blob = storage.bucket().blob(f"manuals/{uid}/{manual_id}.jpg")
-            formatted["image"] = blob.generate_signed_url()
-        except Exception as exc:
+            blob = firebase_store.manual_image_blob(uid, manual_id)
+            formatted["image"] = blob.generate_signed_url(
+                expiration=datetime.timedelta(days=7), version="v4"
+            )
+        except Exception as exc:  # noqa: BLE001 - the answer works without this picture.
             logger.error("Manual image URL could not be generated: %s", exc)
 
     return {**formatted, "manual_id": manual_id}

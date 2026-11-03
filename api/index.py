@@ -17,7 +17,9 @@ import schemas  # noqa: E402
 import slowapi  # noqa: E402
 from endpoints import (  # noqa: E402
     bookmarks,
+    cart,
     chat,
+    checkout,
     chat_stream,
     environmental_tip,
     locate_buttons,
@@ -42,6 +44,8 @@ app.include_router(bookmarks.bookmark_router)
 app.include_router(locate_buttons.locate_router)
 app.include_router(environmental_tip.environmental_tip_router)
 app.include_router(marketplace.marketplace_router)
+app.include_router(checkout.checkout_router)
+app.include_router(cart.cart_router)
 
 
 
@@ -80,7 +84,7 @@ async def jwt_interceptor(request: Request, call_next):
 app.add_middleware(
     cors.CORSMiddleware,
     allow_origins=list(settings.allowed_origins),
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 

@@ -60,6 +60,9 @@ keys: the repository is public.
 | `AI_RATE_LIMIT` | no | Limit for AI endpoints; defaults to `20/minute` |
 | `HODOWO_ENV` | no | `dev` (default) or `prod` (JSON logs) |
 | `JWT_SECRET` / `JWT_JWKS_URL` | one of them | JWT verification; set exactly one |
+| `STRIPE_SECRET_KEY` | no | Stripe **test** secret key (`sk_test_...`); live keys are refused. Without it the checkout is simulated |
+| `STRIPE_WEBHOOK_SECRET` | with `STRIPE_SECRET_KEY` | Signing secret of the Stripe webhook (`whsec_...`) |
+| `STRIPE_CURRENCY` | no | Defaults to `eur` |
 
 Missing or invalid values fail fast with a clear message from `api/config.py`.
 
@@ -77,6 +80,53 @@ Missing or invalid values fail fast with a clear message from `api/config.py`.
 | `GET` | `/api/manuals?limit=&bookmarked=` | Bearer JWT | Newest manuals of the user (Home, Recent Manuals), optionally only the bookmarked ones |
 | `GET` | `/api/manuals/popular?limit=` | Bearer JWT | Most searched and saved guides of all users (searches + 2 × saves), without user data |
 | `GET` | `/api/appliances/environmental-tip` | Bearer JWT | Daily energy-saving tip from the LLM, the same for the whole day |
+| `GET` | `/api/marketplace/cart` | Bearer JWT | The user's cart with current prices, availability and server-side totals |
+| `POST` | `/api/marketplace/cart/items` | Bearer JWT | Adds `{product_type, product_id, quantity}`; the same product again increases the quantity |
+| `PATCH` | `/api/marketplace/cart/items/{cart_item_id}` | Bearer JWT | Changes the quantity of one of the user's lines |
+| `DELETE` | `/api/marketplace/cart/items/{cart_item_id}` | Bearer JWT | Removes one of the user's lines |
+| `POST` | `/api/marketplace/checkout` | Bearer JWT | Turns the cart into one pending order per seller and returns the PaymentIntent `client_secret` |
+| `POST` | `/api/marketplace/stripe/webhook` | Stripe signature | Confirms or fails the orders of a checkout |
+| `GET` | `/api/marketplace/orders` | Bearer JWT | Purchase history of the user, newest first |
+| `GET` | `/api/marketplace/orders/{order_id}` | Bearer JWT | One order of the user (`403` for another user's order) |
+
+### Marketplace cart
+
+Every cart call returns the whole updated cart, so the app never computes a
+total itself. `product_type` is `new` (partner product), `part` (spare part) or
+`used` (second-hand listing). The backend refuses, with `409`, a sold listing,
+an out-of-stock quantity, a listing of your own, a second-hand listing with a
+quantity above 1 or added twice. An item that becomes unavailable after being
+added stays in the cart with `available: false` and its `unavailable_reason`,
+and is left out of `total_cents` and `item_count`. `price_changed` tells the
+user that the price is different from when the item was added.
+
+### Marketplace checkout (Stripe test mode)
+
+1. The app calls `POST /api/marketplace/checkout`. The backend re-reads every
+   cart item from Firestore (price, stock, listing status) and never trusts a
+   price sent by the app. Unbuyable items return `409` with the list of
+   problems. The cart is split into one order per seller, all paid by a single
+   PaymentIntent.
+2. The app opens the Stripe PaymentSheet with the returned `client_secret` and
+   its publishable key (`pk_test_...`). Card data never reaches this backend.
+3. Stripe calls the webhook. Its `Stripe-Signature` header is verified, each
+   event is processed once (`stripe_events` collection), and the amount must
+   match the orders. On `payment_intent.succeeded` the orders become `paid`,
+   second-hand listings become `sold`, stock is decremented and the cart lines
+   are removed, in one batch.
+
+Without `STRIPE_SECRET_KEY` the checkout is simulated: orders are recorded as
+paid with `simulated: true`. Seller payouts are not part of Sprint 2: every
+payment lands on the platform's test account (Stripe Connect in Sprint 3).
+
+Test the webhook locally with the Stripe CLI:
+
+```bash
+stripe listen --forward-to localhost:8000/api/marketplace/stripe/webhook
+# copy the whsec_... it prints into STRIPE_WEBHOOK_SECRET, then pay with
+# 4242 4242 4242 4242 (success), 4000 0000 0000 0002 (declined)
+# or 4000 0027 6000 3184 (3D Secure)
+```
 
 ### `POST /api/panel/analyze`
 

@@ -22,6 +22,7 @@ from endpoints import (  # noqa: E402
     checkout,
     chat_stream,
     environmental_tip,
+    forum,
     locate_buttons,
     manuals,
     marketplace,
@@ -46,6 +47,7 @@ app.include_router(environmental_tip.environmental_tip_router)
 app.include_router(marketplace.marketplace_router)
 app.include_router(checkout.checkout_router)
 app.include_router(cart.cart_router)
+app.include_router(forum.forum_router)
 
 
 

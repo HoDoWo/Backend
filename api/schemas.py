@@ -32,6 +32,36 @@ class CartQuantityRequest(BaseModel):
     quantity: int = Field(ge=1, le=99)
 
 
+# Appliance forum (#44). Lengths are checked again after trimming, in forum_service.
+class ForumThreadRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    body: Optional[str] = Field(default=None, max_length=4000)
+    # A category, or a product (its category is then the product's).
+    category: Optional[str] = Field(default=None, max_length=40)
+    appliance_model: Optional[str] = Field(default=None, max_length=160)
+    product_type: Optional[Literal["new", "used", "part"]] = None
+    product_id: Optional[str] = Field(default=None, min_length=1, max_length=128, pattern=r"^[^/]+$")
+
+
+class ForumThreadEditRequest(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=300)
+    body: Optional[str] = Field(default=None, max_length=4000)
+
+
+class ForumReplyRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+class ForumReportRequest(BaseModel):
+    # "unsafe": repair advice that could hurt someone (mains power, gas...).
+    reason: Literal["spam", "offensive", "unsafe", "off_topic", "other"]
+    note: Optional[str] = Field(default=None, max_length=600)
+
+
+class ForumModerationRequest(BaseModel):
+    action: Literal["hide", "restore"]
+
+
 class MarketplaceListingRequest(BaseModel):
     title: str = Field(min_length=3, max_length=120)
     description: str = Field(min_length=30, max_length=800)

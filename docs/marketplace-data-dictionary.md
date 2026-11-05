@@ -16,6 +16,10 @@ stable totals; API requests accept decimal amounts and normalize them.
 | `carts/{lineId}` | One cart line per document (`uid`, `product_type`, `product_id`, `quantity`, `price_cents`, `added_at`); id `{uid}_{product_type}_{product_id}` | Backend (cart API); owner can read |
 | `orders/{orderId}` | One order per seller with the items embedded; `uid`, `seller_id`, `checkout_id`, `status`, `total_cents`, `payment_intent_id`, `simulated`, `created_at`, `paid_at` | Backend (checkout and Stripe webhook); owner can read |
 | `stripe_events/{eventId}` | Stripe webhook events already processed | Backend only |
+| `forum_threads/{threadId}` | A forum thread: `category`, `title`, `body`, `appliance_model`, optional `product_type` + `product_id` + `product_key` (`{type}:{id}`) + `product_title`, `uid`, `author_name`, `author_badge`, `status`, `upvotes`, `reply_count`, `report_count`, `created_at`, `edited_at`, `last_activity_at` | Backend (forum API) only |
+| `forum_threads/{threadId}/replies/{replyId}` | A reply: `uid`, `author_name`, `author_badge`, `body`, `status`, `upvotes`, `report_count`, `created_at`, `edited_at` | Backend (forum API) only |
+| `forum_votes/{voteId}` | One upvote; id `{uid}_{threadId}` or `{uid}_{threadId}_{replyId}`, so a user votes once | Backend only |
+| `forum_reports/{reportId}` | One report (`reason`, `note`, `created_at`); same id scheme as votes | Backend only |
 
 ## `listings/{listingId}`
 
@@ -46,3 +50,17 @@ Catalogue documents use `stock` (buyable when `stock > 0`); the older
 `review_count` are returned only when real reviews exist, otherwise `null`.
 The composite indexes in `firestore.indexes.json` support the API filters and
 stable ranking pagination.
+
+## Forum
+
+`category` is one of the fixed ids in `forum_service.CATEGORIES`; a thread
+about a product takes the product's category (`other` when it has none of
+them). `status` is `visible`, `hidden` (3 reports from different users, or an
+admin) or `deleted` (by its author); only `visible` posts are returned.
+`author_badge` is `seller`, `verified_buyer` or `null` and is decided by the
+backend when the post is written. Category lists and replies are paginated
+Firestore queries that need the forum indexes in `firestore.indexes.json`;
+the threads of one product are read with one equality filter on `product_key`
+and sorted in memory. The forum collections are closed to clients in
+`firestore.rules`: the app reads them through the API, which never returns
+uids.

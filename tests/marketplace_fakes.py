@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 
+import forum_store
 import marketplace_store
 
 
@@ -95,3 +96,105 @@ class FakeStore:
                 stored["stock"] -= item["quantity"]
         for cart_item_id in order["cart_item_ids"]:
             self.cart_items.pop(cart_item_id, None)
+
+
+
+class FakeForumStore:
+    """In-memory stand-in for forum_store, with the same ordering and paging rules."""
+
+    def __init__(self):
+        self.threads: dict[str, dict] = {}
+        self.replies: dict[str, dict[str, dict]] = {}
+        self.votes: dict[str, dict] = {}
+        self.reports: dict[str, dict] = {}
+        self._next = 0
+
+    def _id(self, prefix):
+        self._next += 1
+        return f"{prefix}{self._next:03d}"
+
+    def _post(self, thread_id, reply_id):
+        return self.replies[thread_id][reply_id] if reply_id else self.threads[thread_id]
+
+    @staticmethod
+    def _page(rows, key, limit, cursor):
+        ids = [row[key] for row in rows]
+        if cursor:
+            if cursor not in ids:
+                raise forum_store.InvalidCursor(cursor)
+            rows = rows[ids.index(cursor) + 1:]
+        return copy.deepcopy(rows[:limit]), len(rows) > limit
+
+    def list_category_threads(self, category, order, limit, cursor):
+        rows = [{**t, "thread_id": tid} for tid, t in self.threads.items()
+                if t["category"] == category and t["status"] == "visible"]
+        if order == "popular":
+            rows.sort(key=lambda t: (-t["upvotes"], -t["last_activity_at"]))
+        else:
+            rows.sort(key=lambda t: -t["last_activity_at"])
+        return self._page(rows, "thread_id", limit, cursor)
+
+    def list_product_threads(self, product_key):
+        return [{**copy.deepcopy(t), "thread_id": tid} for tid, t in self.threads.items()
+                if t.get("product_key") == product_key]
+
+    def get_thread(self, thread_id):
+        thread = self.threads.get(thread_id)
+        return {**copy.deepcopy(thread), "thread_id": thread_id} if thread else None
+
+    def create_thread(self, data):
+        thread_id = self._id("t")
+        self.threads[thread_id] = copy.deepcopy(data)
+        self.replies[thread_id] = {}
+        return thread_id
+
+    def list_replies(self, thread_id, limit, cursor):
+        rows = [{**r, "reply_id": rid} for rid, r in self.replies.get(thread_id, {}).items()
+                if r["status"] == "visible"]
+        rows.sort(key=lambda r: r["created_at"])
+        return self._page(rows, "reply_id", limit, cursor)
+
+    def all_replies(self, thread_id):
+        return [{**copy.deepcopy(r), "reply_id": rid} for rid, r in self.replies.get(thread_id, {}).items()]
+
+    def get_reply(self, thread_id, reply_id):
+        reply = self.replies.get(thread_id, {}).get(reply_id)
+        return {**copy.deepcopy(reply), "reply_id": reply_id} if reply else None
+
+    def create_reply(self, thread_id, data):
+        reply_id = self._id("r")
+        self.replies[thread_id][reply_id] = copy.deepcopy(data)
+        self.threads[thread_id]["reply_count"] += 1
+        self.threads[thread_id]["last_activity_at"] = data["created_at"]
+        return reply_id
+
+    def update_post(self, thread_id, reply_id, fields):
+        self._post(thread_id, reply_id).update(fields)
+
+    def set_status(self, thread_id, reply_id, status, reply_count_change=0):
+        self._post(thread_id, reply_id)["status"] = status
+        if reply_id:
+            self.threads[thread_id]["reply_count"] += reply_count_change
+
+    def voted(self, vote_ids):
+        return {vote_id for vote_id in vote_ids if vote_id in self.votes}
+
+    def add_vote(self, vote_id, data, thread_id, reply_id):
+        if vote_id in self.votes:
+            return False
+        self.votes[vote_id] = dict(data)
+        self._post(thread_id, reply_id)["upvotes"] += 1
+        return True
+
+    def remove_vote(self, vote_id, thread_id, reply_id):
+        if self.votes.pop(vote_id, None) is None:
+            return False
+        self._post(thread_id, reply_id)["upvotes"] -= 1
+        return True
+
+    def add_report(self, report_id, data, thread_id, reply_id):
+        if report_id in self.reports:
+            return False
+        self.reports[report_id] = dict(data)
+        self._post(thread_id, reply_id)["report_count"] += 1
+        return True

@@ -62,5 +62,24 @@ service cloud.firestore {
     match /stripe_events/{eventId} {
       allow read, write: if false;
     }
+
+    // Appliance forum (#44): only the backend reads and writes it, so hidden posts,
+    // uids and report counts never reach the app, and badges and votes
+    // cannot be forged.
+    match /forum_threads/{threadId} {
+      allow read, write: if false;
+
+      match /replies/{replyId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /forum_votes/{voteId} {
+      allow read, write: if false;
+    }
+
+    match /forum_reports/{reportId} {
+      allow read, write: if false;
+    }
   }
 }

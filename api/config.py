@@ -165,5 +165,19 @@ def _client_ip(request: fastapi.Request) -> str:
         return forwarded.split(",", 1)[0].strip()
     return util.get_remote_address(request)
 
+def _user_or_ip(request: fastapi.Request) -> str:
+    """Count per signed-in user (the JWT middleware runs first), else per IP."""
+    user = getattr(request.state, "user", None) or {}
+    uid = str(user.get("uid") or user.get("sub") or "").strip()
+    return f"user:{uid}" if uid else _client_ip(request)
+
+
 limiter = slowapi.Limiter(key_func=_client_ip)
 ai_rate_limit = limiter.limit(get_settings().ai_rate_limit)
+
+# Forum posts, answers, votes and reports: enough for a person, not for a bot.
+DEFAULT_FORUM_RATE_LIMIT = "10/minute"
+forum_rate_limit = limiter.limit(
+    os.getenv("FORUM_RATE_LIMIT", DEFAULT_FORUM_RATE_LIMIT).strip() or DEFAULT_FORUM_RATE_LIMIT,
+    key_func=_user_or_ip,
+)

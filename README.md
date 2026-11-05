@@ -58,6 +58,7 @@ keys: the repository is public.
 | `FIREBASE_PROJECT_ID`, `FIREBASE_SERVICE_ACCOUNT_JSON` | yes (for saved guides) | Firestore persistence, see below |
 | `ALLOWED_ORIGINS` | no | Comma-separated CORS origins; defaults to `http://localhost:3000,https://app.hodowo.com`. Never `*` |
 | `AI_RATE_LIMIT` | no | Limit for AI endpoints; defaults to `20/minute` |
+| `FORUM_RATE_LIMIT` | no | Limit for forum posts, edits, votes and reports, per user; defaults to `10/minute` |
 | `HODOWO_ENV` | no | `dev` (default) or `prod` (JSON logs) |
 | `JWT_SECRET` / `JWT_JWKS_URL` | one of them | JWT verification; set exactly one |
 | `STRIPE_SECRET_KEY` | no | Stripe **test** secret key (`sk_test_...`); live keys are refused. Without it the checkout is simulated |
@@ -165,6 +166,47 @@ stripe listen --forward-to localhost:8000/api/marketplace/stripe/webhook
 # or 4000 0027 6000 3184 (3D Secure)
 ```
 
+### Appliance forum
+
+Discussions by appliance category, outside the AI chat (#44). The categories
+are a fixed list by appliance type (`washing-machine`, `dryer`, `dishwasher`,
+`refrigerator`, `oven`, `hob`, `microwave`, `coffee-machine`, `other`). A
+thread can also be about one marketplace product: it is then shown on that
+product's detail page too, and its category is the product's.
+
+| Method and path | What it does |
+|---|---|
+| `GET /api/forum/categories` | The fixed category list |
+| `GET /api/forum/categories/{category}/threads?sort=recent\|popular&limit=20&cursor=` | One page of threads with `last_activity_at` and `reply_count`; send `next_cursor` back as `cursor` |
+| `GET /api/forum/products/{type}/{id}/threads?sort=popular\|recent` | Questions about one product, each with its most upvoted reply (`top_reply`) |
+| `POST /api/forum/threads` | `{"title", "body"?, "category"?, "appliance_model"?, "product_type"?, "product_id"?}`: a category or a product |
+| `GET` / `PATCH` / `DELETE /api/forum/threads/{id}` | Read; edit (`title`, `body`) or delete, author only |
+| `GET /api/forum/threads/{id}/replies?limit=20&cursor=` | One page of replies, oldest first |
+| `POST /api/forum/threads/{id}/replies` | `{"body"}` |
+| `PATCH` / `DELETE /api/forum/threads/{id}/replies/{replyId}` | Edit or delete, author only |
+| `PUT` / `DELETE .../vote` on a thread or a reply | Add or withdraw your upvote; repeating it is harmless |
+| `POST .../report` on a thread or a reply | `{"reason": "spam\|offensive\|unsafe\|off_topic\|other", "note"?}` |
+| `POST .../moderation` on a thread or a reply | Admin only: `{"action": "hide\|restore"}` |
+
+Limits: title 8-150 characters, text and replies up to 2000, checked after
+trimming; control characters are removed. Text is stored as plain text, so
+clients must never render it as HTML. Responses never contain a uid: only
+`author_name` (display name from the token, never the email), `author_badge`
+and `is_mine`. Badges are set by the backend on threads about a product:
+`seller` for the owner of the second-hand listing, `verified_buyer` for a user
+with a paid order containing it. Someone else's post answers `404` to edit and
+delete, so ids cannot be probed. You cannot upvote or report your own post.
+
+Moderation: every report is stored in `forum_reports` and counted on the post;
+3 reports from different users hide it automatically. Admins hide or restore
+posts with the moderation endpoints; to make someone an admin run
+`python scripts/set_forum_admin.py <email>` (they must sign in again).
+
+The paginated lists need the forum indexes in `firestore.indexes.json`;
+deploy them with `firebase deploy --only firestore` (see "Firebase /
+Firestore persistence"). A Community page with recent and popular threads
+across categories and "my products" is planned for Sprint 3.
+
 ### `POST /api/panel/analyze`
 
 Receives the cropped panel photo and the appliance context, calls the vision
@@ -223,7 +265,8 @@ request from another origin is rejected by the browser.
 returns `429`. The counter is kept in process memory, so on Vercel each
 instance has its own counter and a burst can still slip through across
 instances. This is basic MVP protection; for a hard limit, back the limiter
-with Upstash Redis. When login exists (S1-07), key the limit by user instead
+with Upstash Redis. Forum writes (threads, replies, edits, votes, reports) are
+limited per signed-in user instead (default `10/minute`, `FORUM_RATE_LIMIT`). When login exists (S1-07), key the limit by user instead
 of IP.
 
 ## Deploy on Vercel
@@ -245,6 +288,19 @@ Ratings are stored in `manuals/{manual_id}/ratings/{user_uid}` with one
 toggleable rating per user. Configure `FIREBASE_PROJECT_ID` and either
 `FIREBASE_SERVICE_ACCOUNT_JSON` (a JSON string) or
 `GOOGLE_APPLICATION_CREDENTIALS` (a local service-account file path).
+
+Security rules and indexes live in this repo (`firestore.rules`,
+`firestore.indexes.json`) and are not applied by a Vercel deploy. With the
+Firebase CLI (`npm install -g firebase-tools`, then `firebase login`), run
+from the repository root:
+
+```bash
+firebase deploy --only firestore   # rules + indexes, project from .firebaserc
+```
+
+New indexes take a few minutes to build; until then the query that needs one
+answers an error whose message contains a link to create it.
+
 <img width="4768" height="1947" alt="AdobeExpressPhotos_1cfa9bfd954242a38a89a422d152059c_CopyEdited" src="https://github.com/user-attachments/assets/9ace2589-7f66-47de-823f-390001cc3635" />
 
 ### Serverless execution time (risk 7)

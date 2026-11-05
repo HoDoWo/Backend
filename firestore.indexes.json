@@ -37,6 +37,33 @@
         { "fieldPath": "model", "order": "ASCENDING" },
         { "fieldPath": "stock", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "forum_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "category", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "last_activity_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "forum_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "category", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "upvotes", "order": "DESCENDING" },
+        { "fieldPath": "last_activity_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "replies",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

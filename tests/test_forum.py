@@ -209,7 +209,7 @@ def test_badges_are_decided_by_the_server(forum, store):
     "title, body, detail",
     [
         ("Short?", None, "the title must be at least 8 characters"),
-        ("        ​​        ", None, "the title must be at least 8 characters"),
+        ("        \u200b\u200b        ", None, "the title must be at least 8 characters"),
         ("A" * 151, None, "the title can be at most 150 characters"),
         ("Is the size right for me?", "x" * 2001, "the text can be at most 2000 characters"),
     ],
@@ -223,7 +223,7 @@ def test_text_is_validated_after_trimming(forum, store, title, body, detail):
 
 
 def test_control_characters_are_removed_and_names_are_safe(forum, store):
-    thread = new_thread(client=client_for("u-x", "  Eve\u0007  ‮Admin  "), title="Is it ‮loud\u0007 now?").json()
+    thread = new_thread(client=client_for("u-x", "  Eve\u0007  \u202eAdmin  "), title="Is it \u202eloud\u0007 now?").json()
 
     assert thread["title"] == "Is it loud now?"
     assert thread["author_name"] == "Eve Admin"

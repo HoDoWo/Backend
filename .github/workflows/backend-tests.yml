@@ -23,4 +23,9 @@ jobs:
 
       # Exact versions with hashes, wheels only: no unpinned package and no setup script runs.
       - name: Install dependencies
-        run: pip install --require-hashes --only-binary :all: -r requirements-dev.lock
+        run: |
+          pip install --require-hashes --only-binary :all: -r requirements-dev.lock
+
+      # The tests use in-memory fakes: no Firebase, Stripe or OpenRouter keys needed.
+      - name: Run the tests
+        run: python -m pytest -q

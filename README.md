@@ -168,6 +168,27 @@ added stays in the cart with `available: false` and its `unavailable_reason`,
 and is left out of `total_cents` and `item_count`. `price_changed` tells the
 user that the price is different from when the item was added.
 
+### Second-hand listings
+
+Users publish their own appliances and parts (#35). Every route needs a
+signed-in user; changes are for the listing's owner only.
+
+| Method and path | What it does |
+|---|---|
+| `POST /api/marketplace/listings` | Publishes a listing of the user (`status: active`) |
+| `GET /api/marketplace/listings?q=&category=&max_price=&status=&mine=&cursor=&limit=` | Active listings newest first in `results`, paginated with `next_cursor`; `mine=true` lists all the user's listings, sold ones included |
+| `GET /api/marketplace/listings/{id}` | One listing; a sold listing only for its owner |
+| `PATCH /api/marketplace/listings/{id}` | Edits title, description, condition, price, photos, handover...; a sold listing cannot be edited (`409`) |
+| `POST /api/marketplace/listings/{id}/sold` | Marks it as sold: it leaves the marketplace and cannot be bought |
+| `DELETE /api/marketplace/listings/{id}` | Deletes it |
+
+Another user's listing answers `403` to edit, sell and delete. Validation
+errors are `422` with the field in `detail[].loc`. `condition` is one of
+`unopened`, `like-new`, `used-good`, `parts-only`, `refurbished`; the edit
+also accepts the labels the app shows ("Like new", "Used, good", "For parts").
+Responses carry `condition_label`, `posted_ago` and `is_mine`, never the
+owner's uid; marketplace search does not return it either.
+
 ### Marketplace checkout (Stripe test mode)
 
 1. The app calls `POST /api/marketplace/checkout`. The backend re-reads every

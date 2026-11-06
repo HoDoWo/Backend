@@ -9,7 +9,7 @@ stable totals; API requests accept decimal amounts and normalize them.
 | Collection | Purpose | Writable by |
 |---|---|---|
 | `partners` | Partner identity, tier, commission and active status | Backend/admin |
-| `partner_products` | Official vendor catalogue | Backend/admin |
+| `partner_products` | Official vendor catalogue; written by the import and by `POST`/`PATCH /api/marketplace/products` (partners and admins), which add `created_by` / `updated_by` | Backend only |
 | `parts` | Replacement-part catalogue and availability | Backend/admin |
 | `part_compatibility` | Part-to-model compatibility records | Backend/admin |
 | `listings` | User appliance or part listings | Listing owner |

@@ -178,3 +178,9 @@ def test_a_searched_user_part_can_be_added_to_the_cart(db, monkeypatch):
 
     assert result.status_code == 200
     assert result.json()["total_cents"] == 1500
+
+
+def test_search_results_never_contain_the_owner_uid(db):
+    items = firebase_store.search_marketplace("", "used", None, None, None, None, None, 20)["items"]
+
+    assert items and all("owner_uid" not in item for item in items)

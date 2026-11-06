@@ -174,7 +174,7 @@ async def report_reply(
 async def moderate_thread(
     request: fastapi.Request, req: schemas.ForumModerationRequest, thread_id: PostId
 ) -> dict[str, Any]:
-    """Admin only (custom claim ``admin: true``): hide or restore a thread."""
+    """Admin only (custom claim ``role: "admin"`` or ``admin: true``): hide or restore a thread."""
     return _run(forum_service.moderate, request.state.user, thread_id, None, req.action)
 
 
@@ -182,5 +182,5 @@ async def moderate_thread(
 async def moderate_reply(
     request: fastapi.Request, req: schemas.ForumModerationRequest, thread_id: PostId, reply_id: PostId
 ) -> dict[str, Any]:
-    """Admin only (custom claim ``admin: true``): hide or restore a reply."""
+    """Admin only (custom claim ``role: "admin"`` or ``admin: true``): hide or restore a reply."""
     return _run(forum_service.moderate, request.state.user, thread_id, reply_id, req.action)

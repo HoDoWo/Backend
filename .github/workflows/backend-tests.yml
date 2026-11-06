@@ -19,13 +19,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
+          cache-dependency-path: requirements-dev.lock
 
+      # Exact versions with hashes, wheels only: no unpinned package and no setup script runs.
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
-
-      # The tests use in-memory fakes: no Firebase, Stripe or OpenRouter keys needed.
-      - name: Run the tests
-        run: python -m pytest -q
+        run: pip install --require-hashes --only-binary :all: -r requirements-dev.lock

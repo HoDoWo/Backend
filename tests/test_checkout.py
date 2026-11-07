@@ -110,11 +110,15 @@ def post_webhook(event: dict, secret: str = WEBHOOK_SECRET):
 
 
 def test_checkout_creates_one_order_per_seller_with_server_side_totals(store, gateway, stripe_on):
-    result = client.post("/api/marketplace/checkout", json={"total_cents": 1})
+    # The app cannot send an amount: unknown fields are refused.
+    assert client.post("/api/marketplace/checkout", json={"total_cents": 1}).status_code == 422
+
+    result = client.post("/api/marketplace/checkout", json={})
 
     assert result.status_code == 200
     body = result.json()
-    assert body["total_cents"] == 2 * 2500 + 12000  # the amount sent by the app is ignored
+    # Pumps 50 € (free standard shipping from 50 €) + fridge with local pickup.
+    assert body["total_cents"] == 2 * 2500 + 12000
     assert body["currency"] == "eur"
     assert body["simulated"] is False
     assert body["client_secret"] == "pi_1_secret_abc"
@@ -130,7 +134,10 @@ def test_checkout_uses_the_current_catalogue_price(store, gateway, stripe_on):
     store.set_cart(BUYER, [{"cart_item_id": "c1", "product_type": "part", "product_id": "pump-1", "quantity": 1, "price_cents": 1}])
     store.items[("part", "pump-1")]["price_cents"] = 2700
 
-    assert client.post("/api/marketplace/checkout").json()["total_cents"] == 2700
+    body = client.post("/api/marketplace/checkout").json()
+    assert body["subtotal_cents"] == 2700
+    assert body["shipping_cents"] == 490  # standard shipping under 50 €
+    assert body["total_cents"] == 3190
 
 
 def test_empty_cart_is_refused(store, gateway, stripe_on):

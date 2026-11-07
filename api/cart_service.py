@@ -13,14 +13,18 @@ used to tell the user that it changed.
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import Any
 
 import checkout_service
 import config
+import fulfilment
 import marketplace_store
 
 MAX_LINES = 50
 MAX_QUANTITY = 99
+# How the buyer can pay in the PaymentSheet; Google Pay is a card wallet.
+PAYMENT_METHODS = ("card", "google_pay", "klarna")
 
 
 class CartError(checkout_service.CheckoutError):
@@ -48,52 +52,128 @@ def _image(item: dict[str, Any]) -> str | None:
     return images[0] if isinstance(images, list) and images else None
 
 
-def get_cart(uid: str) -> dict[str, Any]:
-    """Return the cart with current prices, availability and server-side totals."""
-    store = get_store()
-    lines = []
-    total_cents = 0
+def _line(uid: str, cart_item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """One cart row with current price and availability, and the catalogue item behind it."""
+    product_type = cart_item.get("product_type")
+    product_id = str(cart_item.get("product_id") or "")
+    quantity = cart_item.get("quantity") or 1
+    item = (
+        get_store().get_item(product_type, product_id)
+        if product_type in marketplace_store.PRODUCT_SOURCES and product_id
+        else None
+    )
+    problem = checkout_service.availability_problem(uid, product_type, item, quantity) if item else "not available"
+    unit_price = item.get("price_cents") if item and not problem else None
+    added_price = cart_item.get("price_cents")
+    known = item or {}
+    line = {
+        "cart_item_id": cart_item["cart_item_id"],
+        "product_type": product_type,
+        "product_id": product_id,
+        "title": str(known.get("title") or ""),
+        "subtitle": fulfilment.item_subtitle(product_type, known) if item else "",
+        "image_url": _image(known),
+        "seller_id": known.get("seller_id"),
+        "seller_name": fulfilment.seller_name(product_type, known) if item else None,
+        "seller_kind": fulfilment.seller_kind(product_type),
+        "quantity": quantity,
+        "unit_price_cents": unit_price,
+        "price_cents": unit_price * quantity if unit_price else None,
+        "added_price_cents": added_price,
+        "price_changed": bool(unit_price and added_price and unit_price != added_price),
+        "available": problem is None,
+        "unavailable_reason": problem,
+    }
+    return line, item
+
+
+def quote(uid: str, selected_ids: list[str] | None = None,
+          choices: dict[str, str] | None = None) -> dict[str, Any]:
+    """The cart split by seller, with delivery options and the totals of the selection.
+
+    ``selected_ids`` are the cart lines the user wants to buy now (all of them
+    when None); the others stay in the cart. ``choices`` maps a seller id to
+    the delivery method chosen for that group; a group without a choice gets
+    its cheapest option. The totals are the ones the checkout will charge.
+    """
+    cart_items = sorted(get_store().get_cart_items(uid), key=lambda line: line.get("added_at") or 0)
+    known_ids = {cart_item["cart_item_id"] for cart_item in cart_items}
+    if selected_ids is not None:
+        unknown = [line_id for line_id in selected_ids if line_id not in known_ids]
+        if unknown:
+            raise CartError(422, "some selected items are not in the cart")
+    selected = set(known_ids if selected_ids is None else selected_ids)
+    choices = choices or {}
+    today = dt.datetime.fromtimestamp(checkout_service.now_ms() / 1000, tz=dt.timezone.utc).date()
+
+    lines: list[dict[str, Any]] = []
+    by_seller: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {}
     item_count = 0
-
-    for cart_item in sorted(store.get_cart_items(uid), key=lambda line: line.get("added_at") or 0):
-        product_type = cart_item.get("product_type")
-        product_id = str(cart_item.get("product_id") or "")
-        quantity = cart_item.get("quantity") or 1
-        item = (
-            store.get_item(product_type, product_id)
-            if product_type in marketplace_store.PRODUCT_SOURCES and product_id
-            else None
-        )
-        problem = checkout_service.availability_problem(uid, product_type, item, quantity) if item else "not available"
-        unit_price = item.get("price_cents") if item and not problem else None
-        added_price = cart_item.get("price_cents")
-
-        line = {
-            "cart_item_id": cart_item["cart_item_id"],
-            "product_type": product_type,
-            "product_id": product_id,
-            "title": str((item or {}).get("title") or ""),
-            "image_url": _image(item or {}),
-            "quantity": quantity,
-            "unit_price_cents": unit_price,
-            "price_cents": unit_price * quantity if unit_price else None,
-            "added_price_cents": added_price,
-            "price_changed": bool(unit_price and added_price and unit_price != added_price),
-            "available": problem is None,
-            "unavailable_reason": problem,
-        }
-        if problem is None:
-            total_cents += line["price_cents"]
-            item_count += quantity
+    for cart_item in cart_items:
+        line, item = _line(uid, cart_item)
+        line["selected"] = line["cart_item_id"] in selected and line["available"]
         lines.append(line)
+        if line["available"]:
+            item_count += line["quantity"]
+            by_seller.setdefault(line["seller_id"], []).append((line, item))
 
+    unknown_sellers = set(choices) - set(by_seller)
+    if unknown_sellers:
+        raise CartError(422, "a delivery choice refers to a seller that is not in the cart")
+
+    groups = []
+    for seller_id, entries in by_seller.items():
+        first_line, first_item = entries[0]
+        chosen = [(line, item) for line, item in entries if line["selected"]]
+        subtotal = sum(line["price_cents"] for line, _ in chosen)
+        offer = fulfilment.options(first_line["seller_kind"], [item for _, item in (chosen or entries)], subtotal, today)
+        methods = {option["method"]: option for option in offer}
+        method = choices.get(seller_id) or (offer[0]["method"] if offer else None)
+        if method not in methods:
+            raise CartError(422, f"{fulfilment.LABELS.get(method, method)} is not available for {first_line['seller_name']}")
+        shipping = methods[method]["price_cents"] if chosen else 0
+        groups.append({
+            "seller_id": seller_id,
+            "seller_name": first_line["seller_name"],
+            "seller_kind": first_line["seller_kind"],
+            "cart_item_ids": [line["cart_item_id"] for line, _ in entries],
+            "selected_count": sum(line["quantity"] for line, _ in chosen),
+            "options": offer,
+            "method": method,
+            "delivery": methods[method]["delivery"],
+            "pickup_area": fulfilment.pickup_area(first_item) if method == fulfilment.PICKUP else None,
+            "subtotal_cents": subtotal,
+            "shipping_cents": shipping,
+            "total_cents": subtotal + shipping,
+        })
+    # Official partners first, then community sellers, each by name.
+    groups.sort(key=lambda group: (group["seller_kind"] != fulfilment.PARTNER, group["seller_name"].lower()))
+
+    subtotal = sum(group["subtotal_cents"] for group in groups)
+    shipping = sum(group["shipping_cents"] for group in groups)
+    selected_count = sum(group["selected_count"] for group in groups)
     return {
         "items": lines,
         "item_count": item_count,  # for the cart badge: available items only
-        "total_cents": total_cents,
+        "total_cents": sum(line["price_cents"] for line in lines if line["available"]),
         "currency": _currency(),
         "has_unavailable_items": any(not line["available"] for line in lines),
+        "groups": groups,
+        "summary": {
+            "selected_item_count": selected_count,
+            "subtotal_cents": subtotal,
+            "shipping_cents": shipping,
+            "total_cents": subtotal + shipping,
+            "vat_included_cents": fulfilment.vat_included_cents(subtotal + shipping),
+            "can_checkout": selected_count > 0 and subtotal + shipping >= checkout_service.MIN_CHARGE_CENTS,
+        },
+        "payment_methods": list(PAYMENT_METHODS),
     }
+
+
+def get_cart(uid: str) -> dict[str, Any]:
+    """Return the cart with current prices, availability and server-side totals."""
+    return quote(uid)
 
 
 def _buyable_item(uid: str, product_type: str, product_id: str, quantity: int) -> dict[str, Any]:

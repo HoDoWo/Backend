@@ -1,13 +1,15 @@
 """Marketplace checkout, Stripe webhook and order history endpoints (#43)."""
 
-from typing import Any
+from typing import Annotated, Any, Optional
 
 import auth
+import cart_service
 import checkout_service
 import config
 import fastapi
 import firebase_store
 import logging_config
+import schemas
 
 logger = logging_config.get_logger(__name__)
 
@@ -38,10 +40,27 @@ def _run(action, *args):
         raise fastapi.HTTPException(status_code=503, detail="payments are unavailable") from exc
 
 
+@checkout_router.post("/api/marketplace/checkout/quote", response_model=dict)
+async def quote_checkout(request: fastapi.Request, req: schemas.CartSelectionRequest) -> dict[str, Any]:
+    """The cart split by seller with delivery options and the totals of the selection.
+
+    Nothing is saved: the app calls it whenever the selection or a delivery
+    method changes, and shows exactly what the checkout will charge.
+    """
+    return _run(cart_service.quote, _uid(request), req.cart_item_ids, req.delivery)
+
+
 @checkout_router.post("/api/marketplace/checkout", response_model=dict)
-async def create_checkout(request: fastapi.Request) -> dict[str, Any]:
-    """Create the orders for the user's cart and the PaymentIntent to pay them."""
-    return _run(checkout_service.checkout, _uid(request))
+async def create_checkout(
+    request: fastapi.Request,
+    req: Annotated[Optional[schemas.CartSelectionRequest], fastapi.Body()] = None,
+) -> dict[str, Any]:
+    """Create the orders for the selected cart lines and the PaymentIntent to pay them.
+
+    Without a body the whole cart is bought with the cheapest delivery of each seller.
+    """
+    req = req or schemas.CartSelectionRequest()
+    return _run(checkout_service.checkout, _uid(request), req.cart_item_ids, req.delivery, req.payment_method)
 
 
 @checkout_router.post(WEBHOOK_PATH, response_model=dict)

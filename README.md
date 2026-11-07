@@ -168,6 +168,25 @@ added stays in the cart with `available: false` and its `unavailable_reason`,
 and is left out of `total_cents` and `item_count`. `price_changed` tells the
 user that the price is different from when the item was added.
 
+**Groups, delivery and selection.** The cart also comes split by seller in
+`groups` (official partners first), as the orders will be. Each group lists
+its delivery `options` with price and estimated dates, and the chosen
+`method`:
+
+| Seller | Options |
+|---|---|
+| Official partner or HoDoWo part | `standard` 4.90 € (3-5 business days, free from 50 € per seller), `express` 9.90 € (1-2 business days) |
+| Community listing | `pickup` (free) and/or `standard` at the seller's `shipping_price_cents` (4.90 € if not set), as the listing allows |
+
+Shipping is simulated (no carrier is booked) but charged. Before paying, a
+pickup shows only the area (`080xx`); the postcode is in the order. Prices
+include VAT and `summary.vat_included_cents` shows how much of the total it
+is. `POST /api/marketplace/checkout/quote` with `{"cart_item_ids": [...],
+"delivery": {"<seller_id>": "express"}}` returns the same cart for a
+selection and delivery choices, without saving anything: the app calls it on
+every change, so it shows exactly what the checkout will charge. Lines not
+selected stay in the cart.
+
 ### Second-hand listings
 
 Users publish their own appliances and parts (#35). Every route needs a
@@ -191,11 +210,16 @@ owner's uid; marketplace search does not return it either.
 
 ### Marketplace checkout (Stripe test mode)
 
-1. The app calls `POST /api/marketplace/checkout`. The backend re-reads every
-   cart item from Firestore (price, stock, listing status) and never trusts a
-   price sent by the app. Unbuyable items return `409` with the list of
-   problems. The cart is split into one order per seller, all paid by a single
-   PaymentIntent.
+1. The app calls `POST /api/marketplace/checkout` with the same body as the
+   quote plus `payment_method` (`card`, `google_pay` or `klarna`; no body =
+   whole cart, cheapest delivery). The backend re-reads every selected item
+   from Firestore (price, stock, listing status) and never trusts a price sent
+   by the app: unknown fields such as an amount are refused. Unbuyable items
+   return `409` with the list of problems. The selection is split into one
+   order per seller, each with its delivery method, shipping and estimated
+   dates, all paid by a single PaymentIntent. The payment method restricts the
+   PaymentIntent (`card` and `google_pay` -> `card`, `klarna` -> `klarna`);
+   Google Pay and Klarna must be enabled in the Stripe dashboard (test mode).
 2. The app opens the Stripe PaymentSheet with the returned `client_secret` and
    its publishable key (`pk_test_...`). Card data never reaches this backend.
 3. Stripe calls the webhook. Its `Stripe-Signature` header is verified, each

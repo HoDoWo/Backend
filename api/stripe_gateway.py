@@ -28,17 +28,23 @@ def create_payment_intent(
     currency: str,
     metadata: dict[str, str],
     idempotency_key: str,
+    payment_method_types: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Create a PaymentIntent and return its id and client secret."""
+    """Create a PaymentIntent and return its id and client secret.
+
+    With ``payment_method_types`` the PaymentSheet offers only those (the method
+    the buyer chose in the app); without it, every method enabled in the Stripe
+    dashboard.
+    """
     client = stripe.StripeClient(secret_key)
+    params: dict[str, Any] = {"amount": amount_cents, "currency": currency, "metadata": metadata}
+    if payment_method_types:
+        params["payment_method_types"] = payment_method_types
+    else:
+        params["automatic_payment_methods"] = {"enabled": True}
     try:
         intent = client.v1.payment_intents.create(
-            params={
-                "amount": amount_cents,
-                "currency": currency,
-                "automatic_payment_methods": {"enabled": True},
-                "metadata": metadata,
-            },
+            params=params,
             # Retrying the same checkout never creates a second PaymentIntent.
             options={"idempotency_key": idempotency_key},
         )

@@ -41,7 +41,10 @@ def add(product_type, product_id, quantity=1):
 def test_new_cart_is_empty(store):
     body = client.get(CART).json()
 
-    assert body == {"items": [], "item_count": 0, "total_cents": 0, "currency": "eur", "has_unavailable_items": False}
+    assert {key: body[key] for key in ("items", "item_count", "total_cents", "currency", "has_unavailable_items")} == {
+        "items": [], "item_count": 0, "total_cents": 0, "currency": "eur", "has_unavailable_items": False,
+    }
+    assert body["groups"] == [] and body["summary"]["can_checkout"] is False
 
 
 def test_add_returns_the_cart_with_server_side_totals(store):

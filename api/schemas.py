@@ -142,6 +142,20 @@ class MarketplaceListingUpdateRequest(BaseModel):
     shipping_price_cents: Optional[int] = Field(default=None, ge=0, le=100000)
     quantity: Optional[int] = Field(default=None, ge=1, le=99)
 
+DeliveryMethod = Literal["standard", "express", "pickup"]
+
+
+class CartSelectionRequest(BaseModel):
+    """What the buyer wants to buy now and how: used by the quote and the checkout."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Cart lines to buy now (all of them when omitted); the others stay in the cart.
+    cart_item_ids: Optional[List[str]] = Field(default=None, max_length=50)
+    # seller_id -> delivery method for that seller's group.
+    delivery: dict[str, DeliveryMethod] = Field(default_factory=dict, max_length=50)
+    payment_method: Optional[Literal["card", "google_pay", "klarna"]] = None
+
 
 class MarketplaceSearchResponse(BaseModel):
     items: List[dict]

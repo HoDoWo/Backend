@@ -33,7 +33,14 @@ PUBLIC_ORDER_FIELDS = (
     "order_id",
     "checkout_id",
     "seller_id",
+    "seller_name",
     "items",
+    "subtotal_cents",
+    "shipping_method",
+    "shipping_cents",
+    "delivery",
+    "pickup_zip",
+    "payment_method",
     "total_cents",
     "currency",
     "status",
@@ -137,7 +144,8 @@ def _priced_lines(uid: str, cart_items: list[dict[str, Any]]) -> list[dict[str, 
     return lines
 
 
-def _build_orders(uid: str, checkout_id: str, lines: list[dict[str, Any]], currency: str, simulated: bool):
+def _build_orders(uid: str, checkout_id: str, lines: list[dict[str, Any]], currency: str, simulated: bool,
+                  groups: dict[str, dict[str, Any]], payment_method: str | None):
     by_seller: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for line in lines:
         by_seller[line["seller_id"]].append(line)
@@ -145,6 +153,8 @@ def _build_orders(uid: str, checkout_id: str, lines: list[dict[str, Any]], curre
     created_at = now_ms()
     orders = []
     for seller_id, seller_lines in sorted(by_seller.items()):
+        group = groups[seller_id]
+        subtotal = sum(line["price_cents"] for line in seller_lines)
         orders.append(
             {
                 "order_id": uuid.uuid4().hex,
@@ -156,7 +166,15 @@ def _build_orders(uid: str, checkout_id: str, lines: list[dict[str, Any]], curre
                     for line in seller_lines
                 ],
                 "cart_item_ids": [line["cart_item_id"] for line in seller_lines],
-                "total_cents": sum(line["price_cents"] for line in seller_lines),
+                "seller_name": group["seller_name"],
+                "subtotal_cents": subtotal,
+                "shipping_method": group["method"],
+                "shipping_cents": group["shipping_cents"],
+                "delivery": group["delivery"],
+                # The exact pickup place is in the order only, never in the cart.
+                "pickup_zip": group.get("pickup_zip"),
+                "payment_method": payment_method,
+                "total_cents": subtotal + group["shipping_cents"],
                 "currency": currency,
                 "status": "pending",
                 "simulated": simulated,
@@ -178,28 +196,55 @@ def _mark_paid(orders: list[dict[str, Any]], paid_at: int) -> None:
         order.update(status="paid", paid_at=paid_at)
 
 
-def checkout(uid: str) -> dict[str, Any]:
-    """Turn the user's cart into pending orders and a PaymentIntent."""
+# Payment method chosen in the app -> PaymentIntent payment_method_types.
+# Google Pay is a card wallet: the PaymentSheet shows it for "card" intents.
+PAYMENT_METHOD_TYPES = {"card": ["card"], "google_pay": ["card"], "klarna": ["klarna"]}
+
+
+def checkout(uid: str, selected_ids: list[str] | None = None, choices: dict[str, str] | None = None,
+             payment_method: str | None = None) -> dict[str, Any]:
+    """Turn the selected cart lines into pending orders and a PaymentIntent.
+
+    Lines that are not selected stay in the cart. Shipping is added per seller
+    from the quote, so the app is charged exactly what the cart showed.
+    """
+    import cart_service  # imported here: cart_service imports this module
+
     settings = config.get_stripe_settings()
     store = get_store()
 
     cart_items = store.get_cart_items(uid)
     if not cart_items:
         raise CheckoutError(400, "the cart is empty")
+    if selected_ids is not None and not selected_ids:
+        raise CheckoutError(400, "select at least one item to buy")
+    if payment_method is not None and payment_method not in PAYMENT_METHOD_TYPES:
+        raise CheckoutError(422, "payment_method must be card, google_pay or klarna")
 
-    lines = _priced_lines(uid, cart_items)
-    total_cents = sum(line["price_cents"] for line in lines)
+    wanted = set(selected_ids) if selected_ids is not None else {item["cart_item_id"] for item in cart_items}
+    lines = _priced_lines(uid, [item for item in cart_items if item["cart_item_id"] in wanted])
+    plan = cart_service.quote(uid, [line["cart_item_id"] for line in lines], choices)
+    groups = {group["seller_id"]: group for group in plan["groups"]}
+    for group in plan["groups"]:
+        if group["method"] == "pickup" and group["selected_count"]:
+            seller_lines = [line for line in lines if line["seller_id"] == group["seller_id"]]
+            item = store.get_item(seller_lines[0]["product_type"], seller_lines[0]["product_id"]) or {}
+            group["pickup_zip"] = item.get("pickup_zip")
+    total_cents = plan["summary"]["total_cents"]
     if total_cents < MIN_CHARGE_CENTS:
         raise CheckoutError(422, f"the total must be at least {MIN_CHARGE_CENTS} cents")
 
     checkout_id = uuid.uuid4().hex
-    orders = _build_orders(uid, checkout_id, lines, settings.currency, simulated=not settings.enabled)
+    orders = _build_orders(uid, checkout_id, lines, settings.currency, not settings.enabled, groups, payment_method)
     for order in orders:
         store.save_order(order["order_id"], order)
 
     response = {
         "checkout_id": checkout_id,
         "order_ids": [order["order_id"] for order in orders],
+        "subtotal_cents": plan["summary"]["subtotal_cents"],
+        "shipping_cents": plan["summary"]["shipping_cents"],
+        "payment_method": payment_method,
         "total_cents": total_cents,
         "currency": settings.currency,
         "simulated": not settings.enabled,
@@ -219,6 +264,7 @@ def checkout(uid: str) -> dict[str, Any]:
             currency=settings.currency,
             metadata={"checkout_id": checkout_id, "uid": uid},
             idempotency_key=f"checkout-{checkout_id}",
+            payment_method_types=PAYMENT_METHOD_TYPES.get(payment_method),
         )
     except stripe_gateway.PaymentGatewayError as exc:
         logger.error("PaymentIntent creation failed for checkout %s: %s", checkout_id, exc)

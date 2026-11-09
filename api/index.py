@@ -23,6 +23,7 @@ from endpoints import (  # noqa: E402
     chat_stream,
     environmental_tip,
     forum,
+    partner_catalogue,
     locate_buttons,
     manuals,
     marketplace,
@@ -48,6 +49,7 @@ app.include_router(marketplace.marketplace_router)
 app.include_router(checkout.checkout_router)
 app.include_router(cart.cart_router)
 app.include_router(forum.forum_router)
+app.include_router(partner_catalogue.partner_products_router)
 
 
 

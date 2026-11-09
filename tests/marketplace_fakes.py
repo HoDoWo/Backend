@@ -198,3 +198,34 @@ class FakeForumStore:
         self.reports[report_id] = dict(data)
         self._post(thread_id, reply_id)["report_count"] += 1
         return True
+
+
+class FakePartnerStore:
+    """In-memory stand-in for partner_store."""
+
+    def __init__(self, partners=None, products=None):
+        self.partners: dict[str, dict] = copy.deepcopy(partners or {})
+        self.products: dict[str, dict] = copy.deepcopy(products or {})
+
+    def list_products(self):
+        return [{**copy.deepcopy(p), "id": pid} for pid, p in self.products.items()]
+
+    def get_product(self, product_id):
+        product = self.products.get(product_id)
+        return {**copy.deepcopy(product), "id": product_id} if product else None
+
+    def create_product(self, product_id, data):
+        if product_id in self.products:
+            return False
+        self.products[product_id] = copy.deepcopy(data)
+        return True
+
+    def update_product(self, product_id, fields):
+        self.products[product_id].update(copy.deepcopy(fields))
+
+    def list_partners(self):
+        return copy.deepcopy(self.partners)
+
+    def get_partner(self, partner_id):
+        partner = self.partners.get(partner_id)
+        return copy.deepcopy(partner) if partner is not None else None

@@ -312,6 +312,8 @@ def search_marketplace(
     for item in page:
         item.pop("_relevance", None)
         item.pop("_partner_weight", None)
+        # Who sells a listing is shown by seller_name; the uid stays on the server.
+        item.pop("owner_uid", None)
         item.setdefault("partner_name", item.get("partner_name") if item["type"] == "new" else None)
     return {"items": page, "next_cursor": next_cursor}
 

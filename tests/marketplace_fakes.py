@@ -98,7 +98,6 @@ class FakeStore:
             self.cart_items.pop(cart_item_id, None)
 
 
-
 class FakeForumStore:
     """In-memory stand-in for forum_store, with the same ordering and paging rules."""
 
@@ -229,3 +228,27 @@ class FakePartnerStore:
     def get_partner(self, partner_id):
         partner = self.partners.get(partner_id)
         return copy.deepcopy(partner) if partner is not None else None
+
+
+class FakeListingsStore:
+    """In-memory stand-in for listings_store."""
+
+    def __init__(self, listings=None):
+        self.listings: dict[str, dict] = copy.deepcopy(listings or {})
+
+    def _rows(self, field, value):
+        return [{**copy.deepcopy(listing), "id": lid} for lid, listing in self.listings.items()
+                if listing.get(field) == value]
+
+    def list_by_owner(self, uid):
+        return self._rows("owner_uid", uid)
+
+    def list_by_status(self, status):
+        return self._rows("status", status)
+
+    def get_listing(self, listing_id):
+        listing = self.listings.get(listing_id)
+        return {**copy.deepcopy(listing), "id": listing_id} if listing else None
+
+    def update_listing(self, listing_id, fields):
+        self.listings[listing_id].update(copy.deepcopy(fields))

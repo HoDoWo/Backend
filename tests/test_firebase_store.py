@@ -97,6 +97,36 @@ class FakeBlob:
         self.uploaded = (data, content_type)
 
 
+class FakeListingBlob:
+    def __init__(self):
+        self.uploaded = None
+        self.name = "marketplace/user-1/photo.jpg"
+
+    def upload_from_string(self, data, content_type=None):
+        self.uploaded = (data, content_type)
+
+    def generate_signed_url(self, expiration=None, version=None):
+        return f"https://signed.example/{self.name}?version={version}"
+
+
+def test_upload_listing_image_returns_a_signed_url(monkeypatch):
+    blob = FakeListingBlob()
+    monkeypatch.setattr(firebase_store, "get_firestore_client", lambda: None)
+    monkeypatch.setattr(firebase_store, "listing_image_blob", lambda uid, name: blob)
+
+    url = firebase_store.upload_listing_image("user-1", b"jpg")
+
+    assert url.startswith("https://signed.example/marketplace/user-1/")
+    assert blob.uploaded == (b"jpg", "image/jpeg")
+
+
+def test_upload_listing_image_rejects_empty_bytes(monkeypatch):
+    monkeypatch.setattr(firebase_store, "get_firestore_client", lambda: None)
+
+    with pytest.raises(ValueError, match="empty"):
+        firebase_store.upload_listing_image("user-1", b"")
+
+
 def test_save_manual_uploads_the_photo(fake_firestore, monkeypatch):
     blobs = []
 

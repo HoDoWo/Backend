@@ -5,7 +5,8 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import firebase_admin
@@ -29,22 +30,33 @@ def get_firestore_client():
 
     if not firebase_admin._apps:
         service_account_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
-        project_id = os.getenv("FIREBASE_PROJECT_ID", "").strip() or None
-        # Cloud Storage bucket for the manual photos (e.g. "my-app.firebasestorage.app").
-        storage_bucket = os.getenv("FIREBASE_STORAGE_BUCKET", "").strip() or None
+        account: dict[str, Any] | None = None
+        if service_account_json:
+            try:
+                account = json.loads(service_account_json)
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise FirebaseConfigurationError(
+                    "FIREBASE_SERVICE_ACCOUNT_JSON must contain valid service-account JSON"
+                ) from exc
+
+        project_id = (
+            os.getenv("FIREBASE_PROJECT_ID", "").strip()
+            or str((account or {}).get("project_id") or "").strip()
+            or None
+        )
+        # Cloud Storage bucket for listing and manual photos. Modern Firebase
+        # projects use "<project>.firebasestorage.app"; the environment
+        # variable still wins when a project uses another bucket.
+        storage_bucket = os.getenv("FIREBASE_STORAGE_BUCKET", "").strip() or (
+            f"{project_id}.firebasestorage.app" if project_id else None
+        )
         options = {
             key: value
             for key, value in (("projectId", project_id), ("storageBucket", storage_bucket))
             if value
         } or None
-        if service_account_json:
-            try:
-                credential = credentials.Certificate(json.loads(service_account_json))
-            except (json.JSONDecodeError, ValueError) as exc:
-                raise FirebaseConfigurationError(
-                    "FIREBASE_SERVICE_ACCOUNT_JSON must contain valid service-account JSON"
-                ) from exc
-            firebase_admin.initialize_app(credential, options)
+        if account is not None:
+            firebase_admin.initialize_app(credentials.Certificate(account), options)
         else:
             firebase_admin.initialize_app(options=options)
     return firestore.client()
@@ -215,6 +227,45 @@ def create_marketplace_listing(
     data.pop("price", None)
     ref.set(data)
     return {**data, "id": ref.id, "price": float(payload["price"])}
+
+
+def listing_image_blob(user_uid: str, filename: str):
+    """Cloud Storage object that holds one photo of a user's listing."""
+    return storage.bucket().blob(f"marketplace/{user_uid}/{filename}")
+
+
+def upload_listing_image(
+    user_uid: str, image_bytes: bytes, content_type: str = "image/jpeg"
+) -> str:
+    """Upload a listing photo and return a long-lived URL the app can show.
+
+    Uploading through the Admin SDK avoids the client-side Storage rules and
+    bucket configuration that made ``putFile`` fail with "object does not
+    exist at location" for some users.
+    """
+    if not user_uid:
+        raise ValueError("authenticated user uid is required")
+    if not image_bytes:
+        raise ValueError("the listing image is empty")
+
+    # Initialise the Admin app (and its bucket) before touching Storage.
+    get_firestore_client()
+
+    filename = (
+        f"{int(datetime.now(timezone.utc).timestamp() * 1000)}-"
+        f"{uuid.uuid4().hex[:8]}.jpg"
+    )
+    blob = listing_image_blob(user_uid, filename)
+    blob.upload_from_string(image_bytes, content_type=content_type or "image/jpeg")
+
+    # Ten years is long enough for a second-hand listing. Signed URLs also
+    # work when the bucket forbids public objects.
+    try:
+        return blob.generate_signed_url(expiration=timedelta(days=3650), version="v4")
+    except Exception as exc:  # noqa: BLE001 - fall back to a public object.
+        logger.warning("Signed listing image URL failed, trying public URL: %s", exc)
+        blob.make_public()
+        return blob.public_url
 
 
 def delete_marketplace_listing(user_uid: str, listing_id: str) -> bool:

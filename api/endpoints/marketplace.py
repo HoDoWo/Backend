@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import pathlib
 from typing import Literal
 
 import auth
 import firebase_store
+import request_helpers
 import schemas
 from fastapi import APIRouter, HTTPException, Query, Request
 
@@ -64,6 +66,42 @@ async def create_listing(payload: schemas.MarketplaceListingRequest, request: Re
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except (firebase_store.FirebaseConfigurationError, RuntimeError) as exc:
         raise HTTPException(status_code=503, detail="marketplace persistence is unavailable") from exc
+
+
+@marketplace_router.post("/listings/images", status_code=201)
+async def upload_listing_image(request: Request):
+    """Store one sell-form photo and return the URL to put in ``image_urls``.
+
+    The Admin SDK uploads it server-side, so a client whose Firebase Storage
+    rules or bucket are misconfigured can still publish a listing.
+    """
+    if not request.headers.get("content-type", "").startswith("multipart/form-data"):
+        raise HTTPException(status_code=415, detail="send the photo as multipart/form-data")
+
+    form = await request.form()
+    image = request_helpers.find_uploaded_image(form)
+    if image is None:
+        raise HTTPException(status_code=422, detail="an image upload is required")
+
+    user = auth.get_current_user(request)
+    uid = str(user.get("uid") or user.get("sub") or "").strip()
+    if not uid:
+        raise HTTPException(status_code=401, detail="authenticated user id is missing")
+
+    image_path = await request_helpers.save_uploaded_image(image, "listing.jpg")
+    try:
+        image_bytes = pathlib.Path(image_path).read_bytes()
+        url = firebase_store.upload_listing_image(
+            uid, image_bytes, image.content_type or "image/jpeg"
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (firebase_store.FirebaseConfigurationError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail="image storage is unavailable") from exc
+    finally:
+        pathlib.Path(image_path).unlink(missing_ok=True)
+
+    return {"url": url}
 
 
 @marketplace_router.delete("/listings/{listing_id}", status_code=204)

@@ -144,9 +144,11 @@ def test_create_listing_accepts_appliance_form_fields(monkeypatch):
             "image_urls": ["https://example.test/washer.jpg"],
             "handover_methods": ["pickup", "shipping"],
             "pickup_zip": "08001",
+            "location": "Barcelona",
             "shipping_price_cents": 680,
         },
     )
 
     assert response.status_code == 201
     assert response.json()["listing_kind"] == "appliance"
+    assert response.json()["location"] == "Barcelona"

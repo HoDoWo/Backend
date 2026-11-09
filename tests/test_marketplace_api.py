@@ -13,7 +13,7 @@ def test_upload_listing_image_stores_the_photo(monkeypatch):
 
     def upload(uid, image_bytes, content_type):
         captured.update(uid=uid, image=image_bytes, content_type=content_type)
-        return "https://storage.example/listing.jpg"
+        return "image-42"
 
     monkeypatch.setattr(firebase_store, "upload_listing_image", upload)
 
@@ -24,7 +24,7 @@ def test_upload_listing_image_stores_the_photo(monkeypatch):
     )
 
     assert result.status_code == 201
-    assert result.json() == {"url": "https://storage.example/listing.jpg"}
+    assert result.json()["url"].endswith("/api/marketplace/listings/images/image-42")
     assert captured == {
         "uid": "seller-1",
         "image": b"image-bytes",
@@ -40,6 +40,26 @@ def test_upload_listing_image_needs_an_image():
     )
 
     assert result.status_code == 415
+
+
+def test_listing_image_is_public_and_returns_the_bytes(monkeypatch):
+    monkeypatch.setattr(
+        firebase_store, "get_listing_image", lambda image_id: (b"jpeg-bytes", "image/jpeg")
+    )
+
+    # No Authorization header: buyers who are not signed in still see photos.
+    result = client.get("/api/marketplace/listings/images/image-42")
+
+    assert result.status_code == 200
+    assert result.content == b"jpeg-bytes"
+    assert result.headers["content-type"] == "image/jpeg"
+    assert "immutable" in result.headers["cache-control"]
+
+
+def test_unknown_listing_image_returns_404(monkeypatch):
+    monkeypatch.setattr(firebase_store, "get_listing_image", lambda image_id: None)
+
+    assert client.get("/api/marketplace/listings/images/missing").status_code == 404
 
 
 def test_search_returns_mixed_catalogue(monkeypatch):

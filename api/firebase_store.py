@@ -5,8 +5,7 @@ import json
 import logging
 import os
 import re
-import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 import firebase_admin
@@ -229,43 +228,61 @@ def create_marketplace_listing(
     return {**data, "id": ref.id, "price": float(payload["price"])}
 
 
-def listing_image_blob(user_uid: str, filename: str):
-    """Cloud Storage object that holds one photo of a user's listing."""
-    return storage.bucket().blob(f"marketplace/{user_uid}/{filename}")
+LISTING_IMAGES_COLLECTION = "listing_images"
+
+# Firestore rejects documents larger than 1 MiB. The app already compresses
+# every photo, so anything above this budget is a client bug.
+MAX_LISTING_IMAGE_BYTES = 900_000
 
 
 def upload_listing_image(
     user_uid: str, image_bytes: bytes, content_type: str = "image/jpeg"
 ) -> str:
-    """Upload a listing photo and return a long-lived URL the app can show.
+    """Store a listing photo and return its document id.
 
-    Uploading through the Admin SDK avoids the client-side Storage rules and
-    bucket configuration that made ``putFile`` fail with "object does not
-    exist at location" for some users.
+    Firebase Storage requires the paid Blaze plan, so projects on the free
+    Spark plan cannot create a bucket. Photos are kept instead in a dedicated
+    ``listing_images`` Firestore collection (one document per photo, under the
+    1 MiB document limit) and served by
+    ``GET /api/marketplace/listings/images/{id}``.
     """
     if not user_uid:
         raise ValueError("authenticated user uid is required")
     if not image_bytes:
         raise ValueError("the listing image is empty")
+    if len(image_bytes) > MAX_LISTING_IMAGE_BYTES:
+        raise ValueError("the listing image is larger than 900 KB")
 
-    # Initialise the Admin app (and its bucket) before touching Storage.
-    get_firestore_client()
-
-    filename = (
-        f"{int(datetime.now(timezone.utc).timestamp() * 1000)}-"
-        f"{uuid.uuid4().hex[:8]}.jpg"
+    ref = get_firestore_client().collection(LISTING_IMAGES_COLLECTION).document()
+    ref.set(
+        {
+            "owner_uid": user_uid,
+            # Ignore parameters such as "; charset=..." of the upload part.
+            "content_type": (content_type or "image/jpeg").split(";")[0].strip(),
+            "data": image_bytes,
+            "created_at": firestore_server_timestamp(),
+        }
     )
-    blob = listing_image_blob(user_uid, filename)
-    blob.upload_from_string(image_bytes, content_type=content_type or "image/jpeg")
+    return ref.id
 
-    # Ten years is long enough for a second-hand listing. Signed URLs also
-    # work when the bucket forbids public objects.
-    try:
-        return blob.generate_signed_url(expiration=timedelta(days=3650), version="v4")
-    except Exception as exc:  # noqa: BLE001 - fall back to a public object.
-        logger.warning("Signed listing image URL failed, trying public URL: %s", exc)
-        blob.make_public()
-        return blob.public_url
+
+def get_listing_image(image_id: str) -> tuple[bytes, str] | None:
+    """Read back a stored listing photo, or None when the id does not exist."""
+    if not image_id or "/" in image_id:
+        return None
+    snapshot = (
+        get_firestore_client()
+        .collection(LISTING_IMAGES_COLLECTION)
+        .document(image_id)
+        .get()
+    )
+    if not snapshot.exists:
+        return None
+    data = snapshot.to_dict() or {}
+    raw = data.get("data")
+    if not isinstance(raw, bytes):
+        return None
+    return raw, str(data.get("content_type") or "image/jpeg")
 
 
 def delete_marketplace_listing(user_uid: str, listing_id: str) -> bool:

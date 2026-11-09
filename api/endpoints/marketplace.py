@@ -9,7 +9,7 @@ import auth
 import firebase_store
 import request_helpers
 import schemas
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 marketplace_router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
 
@@ -72,8 +72,8 @@ async def create_listing(payload: schemas.MarketplaceListingRequest, request: Re
 async def upload_listing_image(request: Request):
     """Store one sell-form photo and return the URL to put in ``image_urls``.
 
-    The Admin SDK uploads it server-side, so a client whose Firebase Storage
-    rules or bucket are misconfigured can still publish a listing.
+    Photos are stored server-side so the app does not need Firebase Storage
+    rules or a configured bucket to publish a listing.
     """
     if not request.headers.get("content-type", "").startswith("multipart/form-data"):
         raise HTTPException(status_code=415, detail="send the photo as multipart/form-data")
@@ -91,7 +91,7 @@ async def upload_listing_image(request: Request):
     image_path = await request_helpers.save_uploaded_image(image, "listing.jpg")
     try:
         image_bytes = pathlib.Path(image_path).read_bytes()
-        url = firebase_store.upload_listing_image(
+        image_id = firebase_store.upload_listing_image(
             uid, image_bytes, image.content_type or "image/jpeg"
         )
     except ValueError as exc:
@@ -101,7 +101,26 @@ async def upload_listing_image(request: Request):
     finally:
         pathlib.Path(image_path).unlink(missing_ok=True)
 
-    return {"url": url}
+    base_url = str(request.base_url).rstrip("/")
+    return {"url": f"{base_url}/api/marketplace/listings/images/{image_id}"}
+
+
+@marketplace_router.get("/listings/images/{image_id}")
+async def get_listing_image(image_id: str):
+    """Serve a stored listing photo. Public: marketplace photos are not private."""
+    try:
+        found = firebase_store.get_listing_image(image_id)
+    except (firebase_store.FirebaseConfigurationError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail="image storage is unavailable") from exc
+    if found is None:
+        raise HTTPException(status_code=404, detail="image not found")
+
+    image_bytes, content_type = found
+    return Response(
+        content=image_bytes,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @marketplace_router.delete("/listings/{listing_id}", status_code=204)

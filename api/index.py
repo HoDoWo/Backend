@@ -70,7 +70,7 @@ app.add_exception_handler(errors.RateLimitExceeded, slowapi._rate_limit_exceeded
 async def jwt_interceptor(request: Request, call_next):
     """Reject every request that lacks a valid JWT before it reaches a route."""
     # CORS preflight requests never carry credentials.
-    if request.method == "OPTIONS" or request.url.path in auth.PUBLIC_PATHS:
+    if request.method == "OPTIONS" or auth.is_public_path(request.url.path):
         return await call_next(request)
 
     try:

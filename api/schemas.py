@@ -122,6 +122,27 @@ class PartnerProductUpdateRequest(BaseModel):
     sponsored: Optional[bool] = None
 
 
+class MarketplaceListingUpdateRequest(BaseModel):
+    """Owner edit of a listing (#35). ``condition`` also accepts the app's labels ("Like new")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(default=None, min_length=3, max_length=120)
+    description: Optional[str] = Field(default=None, min_length=30, max_length=800)
+    category: Optional[str] = Field(default=None, min_length=2, max_length=80)
+    brand: Optional[str] = Field(default=None, max_length=80)
+    model: Optional[str] = Field(default=None, max_length=80)
+    part_number: Optional[str] = Field(default=None, max_length=80)
+    listing_kind: Optional[Literal["appliance", "part"]] = None
+    condition: Optional[str] = Field(default=None, min_length=3, max_length=30)
+    price: Optional[float] = Field(default=None, gt=0, le=100000)
+    image_urls: Optional[List[str]] = Field(default=None, min_length=1, max_length=8)
+    handover_methods: Optional[List[Literal["pickup", "shipping"]]] = Field(default=None, min_length=1, max_length=2)
+    pickup_zip: Optional[str] = Field(default=None, max_length=20)
+    shipping_price_cents: Optional[int] = Field(default=None, ge=0, le=100000)
+    quantity: Optional[int] = Field(default=None, ge=1, le=99)
+
+
 class MarketplaceSearchResponse(BaseModel):
     items: List[dict]
     next_cursor: Optional[str] = None

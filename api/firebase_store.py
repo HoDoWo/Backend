@@ -194,6 +194,9 @@ def create_marketplace_listing(
     # find it in `listings`; listing_kind still says if it is a part or an appliance.
     item_type = "used"
     title = payload["title"].strip()
+    created_at = int(datetime.now(timezone.utc).timestamp() * 1000)
+    # ``location`` is the DB diagram's field; older clients only send ``pickup_zip``.
+    location = payload.get("location") or payload.get("pickup_zip")
     data = {
         **payload,
         "title": title,
@@ -202,10 +205,12 @@ def create_marketplace_listing(
         "title_normalised": _title_key(title),
         "owner_uid": user_uid,
         "seller_name": seller_name,
+        "location": location,
         "type": item_type,
         "status": "active",
         "sponsored": False,
-        "created_at": int(datetime.now(timezone.utc).timestamp() * 1000),
+        "created_at": created_at,
+        "updated_at": created_at,
     }
     data.pop("price", None)
     ref.set(data)

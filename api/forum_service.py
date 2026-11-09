@@ -8,7 +8,7 @@ product's detail page as well, and its category comes from the product.
 Anyone signed in can open a thread, reply, upvote and report. Only the author
 can edit or delete a post. A post reported by ``REPORTS_TO_HIDE`` different
 users is hidden automatically; an admin (Firebase custom claim
-``admin: true``) can hide or restore any post.
+``admin: true`` or ``role: "admin"``) can hide or restore any post (see ``roles``).
 
 What the app receives never contains a uid: only the author's display name,
 an optional badge and ``is_mine``. Badges are decided here, when the post is
@@ -27,6 +27,7 @@ from typing import Any
 import checkout_service
 import forum_store
 import marketplace_store
+import roles
 
 # Fixed list (#44): id -> name shown in the app. Ids match the catalogue
 # "category" values with "-" instead of spaces, so a product maps to one.
@@ -118,7 +119,7 @@ def author_name(user: dict[str, Any]) -> str:
 
 
 def is_admin(user: dict[str, Any]) -> bool:
-    return user.get("admin") is True
+    return roles.is_admin(user)
 
 
 def _vote_id(uid: str, thread_id: str, reply_id: str | None = None) -> str:

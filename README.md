@@ -89,6 +89,10 @@ Missing or invalid values fail fast with a clear message from `api/config.py`.
 | `POST` | `/api/marketplace/stripe/webhook` | Stripe signature | Confirms or fails the orders of a checkout |
 | `GET` | `/api/marketplace/orders` | Bearer JWT | Purchase history of the user, newest first |
 | `GET` | `/api/marketplace/orders/{order_id}` | Bearer JWT | One order of the user (`403` for another user's order) |
+| `GET` | `/api/marketplace/products?q=&brand=&category=&partner=&cursor=&limit=` | Bearer JWT | Official partner catalogue, paginated, with `partner_tier` and `sponsored` |
+| `GET` | `/api/marketplace/products/{product_id}` | Bearer JWT | One partner product |
+| `POST` | `/api/marketplace/products` | Partner or admin | Creates a product of the caller's partner |
+| `PATCH` | `/api/marketplace/products/{product_id}` | Partner or admin | Changes a product of the caller's partner |
 
 ### Marketplace catalogue: seed and partner feeds
 
@@ -126,6 +130,32 @@ they sell (Aurora, Kelvo, Brezza, Nordwind) are invented. The parts are
 "compatible replacements" for 10 real appliance models that users photograph
 (for example Bosch WAN28201GB), so the diagnosis can suggest a part; these
 compatibility rows are demo data, not manufacturer data.
+
+### Official partner products
+
+Official vendors sell new products. Until the partner dashboard (Sprint 3)
+they write through this API, and the dashboard will use the same endpoints.
+
+- **Who can write**: a partner account (Firebase custom claims `role:
+  "partner"` and `partner_id`) creates and edits its own partner's products;
+  an admin (`role: "admin"`) can do it for any partner and must send
+  `partner_id`. Everyone else gets `403`, and a partner gets `403` on another
+  partner's product. Only an admin can change `sponsored` (paid placement).
+- **Roles** are given with the Admin SDK, never by the app:
+  `python scripts/set_user_role.py <email> --partner voltacasa`, `--admin` or
+  `--remove`. The user must sign in again to get them.
+- **Validation**: `price` between 0.01 and 100000 with at most 2 decimals,
+  `stock` a whole number from 0, `category` one of `washing machine`, `dryer`,
+  `dishwasher`, `refrigerator`, `oven`, `hob`, `microwave`, `coffee machine`,
+  `image_url` https only, SKU unique per partner (case ignored, `409`
+  otherwise). Unknown fields are refused, so `partner_tier`, `partner_name`
+  and `created_by` cannot be sent: tier and name always come from the
+  `partners` document. The SKU is part of the id and cannot be changed.
+- **Reading**: the catalogue shows in-stock products of active partners,
+  sponsored first, then higher `partner_tier`, then newest. A partner
+  filtering on itself (`?partner=<its id>`) also sees its products out of
+  stock, to restock them. Products have the same ids as the feed import
+  (`{partner_id}_{sku}`), so a feed and the API update the same document.
 
 ### Marketplace cart
 
@@ -200,7 +230,7 @@ delete, so ids cannot be probed. You cannot upvote or report your own post.
 Moderation: every report is stored in `forum_reports` and counted on the post;
 3 reports from different users hide it automatically. Admins hide or restore
 posts with the moderation endpoints; to make someone an admin run
-`python scripts/set_forum_admin.py <email>` (they must sign in again).
+`python scripts/set_user_role.py <email> --admin` (they must sign in again).
 
 The paginated lists need the forum indexes in `firestore.indexes.json`;
 deploy them with `firebase deploy --only firestore` (see "Firebase /

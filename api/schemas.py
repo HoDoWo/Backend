@@ -1,5 +1,7 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
+from decimal import Decimal
+from typing import List, Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 class ManualStepSchema(BaseModel):
     number: int
@@ -78,6 +80,46 @@ class MarketplaceListingRequest(BaseModel):
     pickup_zip: Optional[str] = Field(default=None, max_length=20)
     shipping_price_cents: Optional[int] = Field(default=None, ge=0, le=100000)
     quantity: int = Field(default=1, ge=1, le=99)
+
+
+# Official partner products (#39). Unknown fields are refused, so a client
+# cannot send partner_tier, partner_name or created_by.
+PartnerProductCategory = Literal[
+    "washing machine", "dryer", "dishwasher", "refrigerator", "oven", "hob", "microwave", "coffee machine",
+]
+
+
+class PartnerProductCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sku: str = Field(min_length=2, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    title: str = Field(min_length=3, max_length=120)
+    brand: str = Field(min_length=1, max_length=80)
+    model: str = Field(min_length=1, max_length=80)
+    category: PartnerProductCategory
+    description: str = Field(default="", max_length=800)
+    price: Decimal = Field(gt=0, le=100000, decimal_places=2)
+    stock: int = Field(ge=0, le=100000)
+    image_url: Optional[str] = Field(default=None, max_length=500)
+    listing_kind: Literal["appliance", "part"] = "appliance"
+    sponsored: Optional[bool] = None
+    # Admins only: the partner the product belongs to.
+    partner_id: Optional[str] = Field(default=None, min_length=1, max_length=80, pattern=r"^[a-z0-9-]+$")
+
+
+class PartnerProductUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(default=None, min_length=3, max_length=120)
+    brand: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    model: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    category: Optional[PartnerProductCategory] = None
+    description: Optional[str] = Field(default=None, max_length=800)
+    price: Optional[Decimal] = Field(default=None, gt=0, le=100000, decimal_places=2)
+    stock: Optional[int] = Field(default=None, ge=0, le=100000)
+    image_url: Optional[str] = Field(default=None, max_length=500)
+    listing_kind: Optional[Literal["appliance", "part"]] = None
+    sponsored: Optional[bool] = None
 
 
 class MarketplaceSearchResponse(BaseModel):

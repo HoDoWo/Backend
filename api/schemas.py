@@ -78,6 +78,7 @@ class MarketplaceListingRequest(BaseModel):
     diagnostic_media_urls: List[str] = Field(default_factory=list, max_length=8)
     handover_methods: List[str] = Field(min_length=1, max_length=2)
     pickup_zip: Optional[str] = Field(default=None, max_length=20)
+    location: Optional[str] = Field(default=None, max_length=120)
     shipping_price_cents: Optional[int] = Field(default=None, ge=0, le=100000)
     quantity: int = Field(default=1, ge=1, le=99)
 
@@ -139,6 +140,7 @@ class MarketplaceListingUpdateRequest(BaseModel):
     image_urls: Optional[List[str]] = Field(default=None, min_length=1, max_length=8)
     handover_methods: Optional[List[Literal["pickup", "shipping"]]] = Field(default=None, min_length=1, max_length=2)
     pickup_zip: Optional[str] = Field(default=None, max_length=20)
+    location: Optional[str] = Field(default=None, max_length=120)
     shipping_price_cents: Optional[int] = Field(default=None, ge=0, le=100000)
     quantity: Optional[int] = Field(default=None, ge=1, le=99)
 
@@ -181,6 +183,7 @@ class MarketplaceListingResponse(BaseModel):
     status: str
     handover_methods: List[str] = Field(default_factory=list)
     pickup_zip: Optional[str] = None
+    location: Optional[str] = None
     shipping_price_cents: Optional[int] = None
     rating: Optional[float] = None
     review_count: Optional[int] = None

@@ -23,7 +23,8 @@ are declared in [firestore.indexes.json](../../../../../firestore.indexes.json).
 |---|---|---|---|---|
 | FastAPI marketplace service | `partners`, `partner_products`, `parts`, `part_compatibility`, `listings`, `carts`, `orders` | None; Firebase Admin Firestore SDK | None | Backend/admin owns catalogue writes; user listing writes are owner-scoped |
 | Android marketplace client | No authoritative collections; uploads media to `marketplace/<uid>` | None; Firebase client SDK and OkHttp | None | Search and listing mutations use backend API; media is uploaded before listing creation |
-| Firebase Storage | Marketplace image objects | None | None | Authenticated users may write only to their own marketplace path; images are limited to 10 MB |
+| Android app (user data) | `users/<uid>` and its subcollections (`appliances`, `chats`, `manuals`, `bookmarks`, `ratings`), `ratings` | None; Firebase client SDK | Firestore offline cache on the phone | Only the owner reads and writes them, so profile, appliances and chats follow the user to a new phone |
+| Firebase Storage | Marketplace images, profile photos, chat photos | None | None | Authenticated users may write only to their own `marketplace/<uid>` and `users/<uid>` paths; images only, up to 10 MB |
 
 ## Entity Model
 

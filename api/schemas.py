@@ -159,6 +159,29 @@ class CartSelectionRequest(BaseModel):
     payment_method: Optional[Literal["card", "google_pay", "klarna"]] = None
 
 
+class ConversationStartRequest(BaseModel):
+    """"Message the seller" from a second-hand listing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    listing_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    text: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ConversationMessageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class OfferRequest(BaseModel):
+    """An offer in cents, e.g. 8500 for 85,00 €."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount_cents: int = Field(ge=1, le=10_000_000, strict=True)
+
+
 class MarketplaceSearchResponse(BaseModel):
     items: List[dict]
     next_cursor: Optional[str] = None

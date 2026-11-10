@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import conversations_store
 import firebase_store
 from google.api_core import exceptions as google_exceptions
 
@@ -118,7 +119,8 @@ def fulfil_order(order: dict[str, Any], paid_at: int) -> None:
     """Mark an order paid and apply it in one batch.
 
     Listing quantity and catalogue stock are decremented (a listing becomes
-    sold at 0) and the cart lines are removed,
+    sold at 0), an accepted offer that was paid is marked used and the cart
+    lines are removed,
     so the order is never "paid" without its side effects (or the reverse).
     """
     from firebase_admin import firestore
@@ -141,6 +143,11 @@ def fulfil_order(order: dict[str, Any], paid_at: int) -> None:
             if remaining == 0:
                 fields.update(status="sold", sold_at=paid_at)
             batch.update(ref, fields)
+            if item.get("offer_id"):
+                # The accepted offer was paid: it cannot be used again.
+                conversation = conversations_store.conversation_id(item["product_id"], order["uid"])
+                batch.update(db.collection(conversations_store.CONVERSATIONS).document(conversation),
+                             {"offer_used": item["offer_id"], "updated_at": paid_at})
         else:
             batch.update(ref, {"stock": firestore.Increment(-int(item["quantity"]))})
     for cart_item_id in order.get("cart_item_ids", []):

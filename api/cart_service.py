@@ -63,7 +63,9 @@ def _line(uid: str, cart_item: dict[str, Any]) -> tuple[dict[str, Any], dict[str
         else None
     )
     problem = checkout_service.availability_problem(uid, product_type, item, quantity) if item else "not available"
-    unit_price = item.get("price_cents") if item and not problem else None
+    unit_price, offer_id = (
+        checkout_service.unit_price(uid, product_type, product_id, item) if item and not problem else (None, None)
+    )
     added_price = cart_item.get("price_cents")
     known = item or {}
     line = {
@@ -80,7 +82,10 @@ def _line(uid: str, cart_item: dict[str, Any]) -> tuple[dict[str, Any], dict[str
         "unit_price_cents": unit_price,
         "price_cents": unit_price * quantity if unit_price else None,
         "added_price_cents": added_price,
-        "price_changed": bool(unit_price and added_price and unit_price != added_price),
+        # An accepted offer is a price the buyer agreed, not a change to warn about.
+        "price_changed": bool(unit_price and added_price and unit_price != added_price and not offer_id),
+        "offer_id": offer_id,
+        "list_price_cents": item.get("price_cents") if offer_id else None,
         "available": problem is None,
         "unavailable_reason": problem,
     }

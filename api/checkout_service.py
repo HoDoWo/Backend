@@ -196,9 +196,9 @@ def _mark_paid(orders: list[dict[str, Any]], paid_at: int) -> None:
         order.update(status="paid", paid_at=paid_at)
 
 
-# Payment method chosen in the app -> PaymentIntent payment_method_types.
+# Payment method chosen in the app -> PaymentIntent allowed_payment_method_types.
 # Google Pay is a card wallet: the PaymentSheet shows it for "card" intents.
-PAYMENT_METHOD_TYPES = {"card": ["card"], "google_pay": ["card"], "klarna": ["klarna"]}
+ALLOWED_PAYMENT_METHOD_TYPES = {"card": ["card"], "google_pay": ["card"], "klarna": ["klarna"]}
 
 
 def checkout(uid: str, selected_ids: list[str] | None = None, choices: dict[str, str] | None = None,
@@ -218,7 +218,7 @@ def checkout(uid: str, selected_ids: list[str] | None = None, choices: dict[str,
         raise CheckoutError(400, "the cart is empty")
     if selected_ids is not None and not selected_ids:
         raise CheckoutError(400, "select at least one item to buy")
-    if payment_method is not None and payment_method not in PAYMENT_METHOD_TYPES:
+    if payment_method is not None and payment_method not in ALLOWED_PAYMENT_METHOD_TYPES:
         raise CheckoutError(422, "payment_method must be card, google_pay or klarna")
 
     wanted = set(selected_ids) if selected_ids is not None else {item["cart_item_id"] for item in cart_items}
@@ -264,7 +264,7 @@ def checkout(uid: str, selected_ids: list[str] | None = None, choices: dict[str,
             currency=settings.currency,
             metadata={"checkout_id": checkout_id, "uid": uid},
             idempotency_key=f"checkout-{checkout_id}",
-            payment_method_types=PAYMENT_METHOD_TYPES.get(payment_method),
+            allowed_payment_method_types=ALLOWED_PAYMENT_METHOD_TYPES.get(payment_method),
         )
     except stripe_gateway.PaymentGatewayError as exc:
         logger.error("PaymentIntent creation failed for checkout %s: %s", checkout_id, exc)

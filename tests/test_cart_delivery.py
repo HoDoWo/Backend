@@ -167,7 +167,7 @@ def test_checkout_buys_only_the_selection_with_its_delivery(store, gateway, stri
     assert body["subtotal_cents"] == 2500 + 12000 and body["shipping_cents"] == 990
     assert body["total_cents"] == 2500 + 12000 + 990 and body["payment_method"] == "klarna"
     assert gateway.calls[0]["amount_cents"] == body["total_cents"]
-    assert gateway.calls[0]["payment_method_types"] == ["klarna"]
+    assert gateway.calls[0]["allowed_payment_method_types"] == ["klarna"]
 
     orders = {store.orders[oid]["seller_id"]: store.orders[oid] for oid in body["order_ids"]}
     assert set(orders) == {"voltacasa", "seller-9"}  # the oven was not selected
@@ -198,7 +198,7 @@ def test_after_paying_only_the_bought_lines_leave_the_cart(store, gateway, strip
 def test_the_payment_method_restricts_the_payment_sheet(store, gateway, stripe_on, method, types):
     client.post(CHECKOUT, json={"payment_method": method} if method else {})
 
-    assert gateway.calls[0]["payment_method_types"] == types
+    assert gateway.calls[0]["allowed_payment_method_types"] == types
 
 
 def test_an_empty_selection_or_an_unknown_method_is_refused(store, gateway, stripe_on):
@@ -243,9 +243,11 @@ def test_the_gateway_sends_the_chosen_payment_method_to_stripe(monkeypatch):
     monkeypatch.setattr(stripe, "StripeClient", Client)
     common = {"secret_key": "sk_test_1", "amount_cents": 1000, "currency": "eur", "metadata": {}, "idempotency_key": "k"}
 
-    stripe_gateway.create_payment_intent(**common, payment_method_types=["klarna"])
+    stripe_gateway.create_payment_intent(**common, allowed_payment_method_types=["klarna"])
     stripe_gateway.create_payment_intent(**common)
 
-    assert sent[0][0]["payment_method_types"] == ["klarna"] and "automatic_payment_methods" not in sent[0][0]
+    assert sent[0][0]["allowed_payment_method_types"] == ["klarna"] and "automatic_payment_methods" not in sent[0][0]
+    # Refused by Stripe since API version 2026-09-30.endive: never sent.
+    assert all("payment_method_types" not in params for params, _ in sent)
     assert sent[1][0]["automatic_payment_methods"] == {"enabled": True}
     assert sent[0][1] == {"idempotency_key": "k"}

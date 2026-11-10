@@ -28,18 +28,22 @@ def create_payment_intent(
     currency: str,
     metadata: dict[str, str],
     idempotency_key: str,
-    payment_method_types: list[str] | None = None,
+    allowed_payment_method_types: list[str] | None = None,
 ) -> dict[str, Any]:
     """Create a PaymentIntent and return its id and client secret.
 
-    With ``payment_method_types`` the PaymentSheet offers only those (the method
-    the buyer chose in the app); without it, every method enabled in the Stripe
-    dashboard.
+    With ``allowed_payment_method_types`` the PaymentSheet offers only those (the
+    method the buyer chose in the app) that are also enabled in the Stripe
+    dashboard; without it, every method enabled there.
+
+    Since API version 2026-09-30.endive (pinned by stripe-python 16) Stripe
+    refuses the old ``payment_method_types`` parameter with a 400
+    (``payment_method_types_no_longer_supported``), so it is never sent.
     """
     client = stripe.StripeClient(secret_key)
     params: dict[str, Any] = {"amount": amount_cents, "currency": currency, "metadata": metadata}
-    if payment_method_types:
-        params["payment_method_types"] = payment_method_types
+    if allowed_payment_method_types:
+        params["allowed_payment_method_types"] = allowed_payment_method_types
     else:
         params["automatic_payment_methods"] = {"enabled": True}
     try:

@@ -107,7 +107,7 @@ def test_messaging_again_reuses_the_conversation(listings, conversations):
 def test_replies_go_both_ways(listings):
     start("Is it still available?")
 
-    reply = seller.post(f"{API}/{CONV}/messages", json={"text": "  Yes,​ come on Saturday  "})
+    reply = seller.post(f"{API}/{CONV}/messages", json={"text": "  Yes,\u200b come on Saturday  "})
 
     assert reply.status_code == 201
     assert [(m["text"], m["from"]) for m in reply.json()["messages"]] == [
@@ -137,7 +137,7 @@ def test_other_people_cannot_read_or_write_the_conversation(listings):
 def test_empty_or_invisible_messages_are_refused(listings):
     start()
 
-    assert buyer.post(f"{API}/{CONV}/messages", json={"text": "​ ‮"}).status_code == 422
+    assert buyer.post(f"{API}/{CONV}/messages", json={"text": "\u200b \u202e"}).status_code == 422
     assert buyer.post(f"{API}/{CONV}/messages", json={"text": "x" * 1001}).status_code == 422
     assert buyer.post(f"{API}/{CONV}/messages", json={"text": "hi", "uid": SELLER}).status_code == 422
 

@@ -25,6 +25,7 @@ def listing(title, owner_uid=OWNER, **fields):
         "category": "washing machine", "brand": "Bosch", "model": "WAN28201GB",
         "listing_kind": "appliance", "condition": "used-good", "price_cents": 22000,
         "image_urls": ["https://example.test/a.jpg"], "handover_methods": ["pickup"],
+        "pickup_zip": "08001",
         "owner_uid": owner_uid, "seller_name": "Davide", "status": "active", "quantity": 1,
         "created_at": NOW - 2 * 24 * 60 * 60_000,
     }
@@ -54,6 +55,7 @@ def test_browsing_shows_active_listings_newest_first(store):
     washer = body["results"][1]
     assert washer["price"] == 220.0 and washer["condition_label"] == "Used, good"
     assert washer["posted_ago"] == "1h ago" and washer["inquiry_count"] == 0
+    assert washer["location"] == "08001"  # falls back to pickup_zip
     assert washer["is_mine"] is False and "owner_uid" not in washer
     assert body["next_cursor"] is None
 
@@ -101,13 +103,15 @@ def test_a_listing_can_be_read_and_a_sold_one_only_by_its_owner(store):
 
 def test_the_owner_edits_a_listing(store):
     edited = owner.patch(f"{API}/washer", json={
-        "title": "  Bosch washer, 8 kg  ", "price": 199.5, "condition": "Like new", "handover_methods": ["shipping"],
+        "title": "  Bosch washer, 8 kg  ", "price": 199.5, "condition": "Like new",
+        "handover_methods": ["shipping"], "location": "Barcelona",
     })
 
     assert edited.status_code == 200
     body = edited.json()
     assert body["title"] == "Bosch washer, 8 kg" and body["price_cents"] == 19950
     assert body["condition"] == "like-new" and body["condition_label"] == "Like new"
+    assert body["location"] == "Barcelona"
     saved = store.listings["washer"]
     assert saved["title_normalised"] == "bosch washer 8 kg" and saved["updated_at"] == NOW
     assert saved["owner_uid"] == OWNER

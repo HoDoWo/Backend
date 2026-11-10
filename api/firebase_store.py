@@ -29,22 +29,33 @@ def get_firestore_client():
 
     if not firebase_admin._apps:
         service_account_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
-        project_id = os.getenv("FIREBASE_PROJECT_ID", "").strip() or None
-        # Cloud Storage bucket for the manual photos (e.g. "my-app.firebasestorage.app").
-        storage_bucket = os.getenv("FIREBASE_STORAGE_BUCKET", "").strip() or None
+        account: dict[str, Any] | None = None
+        if service_account_json:
+            try:
+                account = json.loads(service_account_json)
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise FirebaseConfigurationError(
+                    "FIREBASE_SERVICE_ACCOUNT_JSON must contain valid service-account JSON"
+                ) from exc
+
+        project_id = (
+            os.getenv("FIREBASE_PROJECT_ID", "").strip()
+            or str((account or {}).get("project_id") or "").strip()
+            or None
+        )
+        # Cloud Storage bucket for listing and manual photos. Modern Firebase
+        # projects use "<project>.firebasestorage.app"; the environment
+        # variable still wins when a project uses another bucket.
+        storage_bucket = os.getenv("FIREBASE_STORAGE_BUCKET", "").strip() or (
+            f"{project_id}.firebasestorage.app" if project_id else None
+        )
         options = {
             key: value
             for key, value in (("projectId", project_id), ("storageBucket", storage_bucket))
             if value
         } or None
-        if service_account_json:
-            try:
-                credential = credentials.Certificate(json.loads(service_account_json))
-            except (json.JSONDecodeError, ValueError) as exc:
-                raise FirebaseConfigurationError(
-                    "FIREBASE_SERVICE_ACCOUNT_JSON must contain valid service-account JSON"
-                ) from exc
-            firebase_admin.initialize_app(credential, options)
+        if account is not None:
+            firebase_admin.initialize_app(credentials.Certificate(account), options)
         else:
             firebase_admin.initialize_app(options=options)
     return firestore.client()
@@ -194,6 +205,9 @@ def create_marketplace_listing(
     # find it in `listings`; listing_kind still says if it is a part or an appliance.
     item_type = "used"
     title = payload["title"].strip()
+    created_at = int(datetime.now(timezone.utc).timestamp() * 1000)
+    # ``location`` is the DB diagram's field; older clients only send ``pickup_zip``.
+    location = payload.get("location") or payload.get("pickup_zip")
     data = {
         **payload,
         "title": title,
@@ -202,14 +216,73 @@ def create_marketplace_listing(
         "title_normalised": _title_key(title),
         "owner_uid": user_uid,
         "seller_name": seller_name,
+        "location": location,
         "type": item_type,
         "status": "active",
         "sponsored": False,
-        "created_at": int(datetime.now(timezone.utc).timestamp() * 1000),
+        "created_at": created_at,
+        "updated_at": created_at,
     }
     data.pop("price", None)
     ref.set(data)
     return {**data, "id": ref.id, "price": float(payload["price"])}
+
+
+LISTING_IMAGES_COLLECTION = "listing_images"
+
+# Firestore rejects documents larger than 1 MiB. The app already compresses
+# every photo, so anything above this budget is a client bug.
+MAX_LISTING_IMAGE_BYTES = 900_000
+
+
+def upload_listing_image(
+    user_uid: str, image_bytes: bytes, content_type: str = "image/jpeg"
+) -> str:
+    """Store a listing photo and return its document id.
+
+    Firebase Storage requires the paid Blaze plan, so projects on the free
+    Spark plan cannot create a bucket. Photos are kept instead in a dedicated
+    ``listing_images`` Firestore collection (one document per photo, under the
+    1 MiB document limit) and served by
+    ``GET /api/marketplace/listings/images/{id}``.
+    """
+    if not user_uid:
+        raise ValueError("authenticated user uid is required")
+    if not image_bytes:
+        raise ValueError("the listing image is empty")
+    if len(image_bytes) > MAX_LISTING_IMAGE_BYTES:
+        raise ValueError("the listing image is larger than 900 KB")
+
+    ref = get_firestore_client().collection(LISTING_IMAGES_COLLECTION).document()
+    ref.set(
+        {
+            "owner_uid": user_uid,
+            # Ignore parameters such as "; charset=..." of the upload part.
+            "content_type": (content_type or "image/jpeg").split(";")[0].strip(),
+            "data": image_bytes,
+            "created_at": firestore_server_timestamp(),
+        }
+    )
+    return ref.id
+
+
+def get_listing_image(image_id: str) -> tuple[bytes, str] | None:
+    """Read back a stored listing photo, or None when the id does not exist."""
+    if not image_id or "/" in image_id:
+        return None
+    snapshot = (
+        get_firestore_client()
+        .collection(LISTING_IMAGES_COLLECTION)
+        .document(image_id)
+        .get()
+    )
+    if not snapshot.exists:
+        return None
+    data = snapshot.to_dict() or {}
+    raw = data.get("data")
+    if not isinstance(raw, bytes):
+        return None
+    return raw, str(data.get("content_type") or "image/jpeg")
 
 
 def delete_marketplace_listing(user_uid: str, listing_id: str) -> bool:

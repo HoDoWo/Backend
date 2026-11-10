@@ -23,6 +23,7 @@ from endpoints import (  # noqa: E402
     chat_stream,
     environmental_tip,
     forum,
+    listing_ai,
     listings,
     partner_catalogue,
     locate_buttons,
@@ -52,6 +53,7 @@ app.include_router(cart.cart_router)
 app.include_router(forum.forum_router)
 app.include_router(partner_catalogue.partner_products_router)
 app.include_router(listings.listings_router)
+app.include_router(listing_ai.listing_ai_router)
 
 
 
@@ -68,7 +70,7 @@ app.add_exception_handler(errors.RateLimitExceeded, slowapi._rate_limit_exceeded
 async def jwt_interceptor(request: Request, call_next):
     """Reject every request that lacks a valid JWT before it reaches a route."""
     # CORS preflight requests never carry credentials.
-    if request.method == "OPTIONS" or request.url.path in auth.PUBLIC_PATHS:
+    if request.method == "OPTIONS" or auth.is_public_path(request.url.path):
         return await call_next(request)
 
     try:

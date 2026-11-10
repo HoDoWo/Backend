@@ -78,6 +78,7 @@ class MarketplaceListingRequest(BaseModel):
     diagnostic_media_urls: List[str] = Field(default_factory=list, max_length=8)
     handover_methods: List[str] = Field(min_length=1, max_length=2)
     pickup_zip: Optional[str] = Field(default=None, max_length=20)
+    location: Optional[str] = Field(default=None, max_length=120)
     shipping_price_cents: Optional[int] = Field(default=None, ge=0, le=100000)
     quantity: int = Field(default=1, ge=1, le=99)
 
@@ -139,6 +140,7 @@ class MarketplaceListingUpdateRequest(BaseModel):
     image_urls: Optional[List[str]] = Field(default=None, min_length=1, max_length=8)
     handover_methods: Optional[List[Literal["pickup", "shipping"]]] = Field(default=None, min_length=1, max_length=2)
     pickup_zip: Optional[str] = Field(default=None, max_length=20)
+    location: Optional[str] = Field(default=None, max_length=120)
     shipping_price_cents: Optional[int] = Field(default=None, ge=0, le=100000)
     quantity: Optional[int] = Field(default=None, ge=1, le=99)
 
@@ -181,6 +183,7 @@ class MarketplaceListingResponse(BaseModel):
     status: str
     handover_methods: List[str] = Field(default_factory=list)
     pickup_zip: Optional[str] = None
+    location: Optional[str] = None
     shipping_price_cents: Optional[int] = None
     rating: Optional[float] = None
     review_count: Optional[int] = None
@@ -188,3 +191,46 @@ class MarketplaceListingResponse(BaseModel):
     warranty_info: Optional[str] = None
     original_price: Optional[float] = None
     discount_percent: Optional[int] = None
+
+
+class ListingScanResponse(BaseModel):
+    """Model/part label read from a photo by the sell form's scan button."""
+
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    part_number: Optional[str] = None
+    confidence: float = 0.0
+    visible_evidence: str = ""
+
+
+class ListingPolishRequest(BaseModel):
+    description: str = Field(min_length=1, max_length=2000)
+
+
+class ListingPolishResponse(BaseModel):
+    description: str
+
+
+class ListingEstimateRequest(BaseModel):
+    """Everything the seller already entered, used to estimate a fair price."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    title: str = Field(default="", max_length=120)
+    description: str = Field(default="", max_length=800)
+    category: str = Field(default="", max_length=80)
+    brand: str = Field(default="", max_length=80)
+    model: str = Field(default="", max_length=80)
+    condition: str = Field(default="", max_length=30)
+    listing_kind: str = Field(default="", max_length=20)
+    photo_count: int = Field(default=0, ge=0, le=8)
+    pickup: bool = True
+    shipping: bool = True
+    location: str = Field(default="", max_length=120)
+
+
+class ListingEstimateResponse(BaseModel):
+    low: float
+    high: float
+    currency: str = "USD"
+    rationale: str = ""

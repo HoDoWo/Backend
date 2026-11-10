@@ -40,6 +40,16 @@ PUBLIC_PATHS = frozenset(
     {"/health", "/docs", "/redoc", "/openapi.json", "/api/marketplace/stripe/webhook"}
 )
 
+# Prefixes reachable without a token. Listing photos are shown to every user
+# browsing the marketplace, so requiring a token would break the image URLs.
+# The trailing slash keeps the protected POST /listings/images upload out.
+PUBLIC_PATH_PREFIXES = ("/api/marketplace/listings/images/",)
+
+
+def is_public_path(path: str) -> bool:
+    """True when [path] does not require a token."""
+    return path in PUBLIC_PATHS or path.startswith(PUBLIC_PATH_PREFIXES)
+
 def get_current_user(request: fastapi.Request) -> dict:
     if hasattr(request.state, "user") and request.state.user:
         return request.state.user

@@ -134,14 +134,30 @@ def test_cursor_pages_through_without_repeats(db):
 def test_new_listing_is_used_with_epoch_ms_date(db):
     created = firebase_store.create_marketplace_listing(
         "owner-1",
-        {"title": "Washer motor", "listing_kind": "part", "price": 45.5, "quantity": 2},
+        {
+            "title": "Washer motor", "listing_kind": "part", "price": 45.5, "quantity": 2,
+            "pickup_zip": "98101", "location": "Seattle, WA",
+        },
         seller_name="Davide",
     )
 
     stored = db.collection("listings").docs[created["id"]]
     assert stored["item_type"] == "used" and stored["type"] == "used"
     assert stored["price_cents"] == 4550
+    assert stored["location"] == "Seattle, WA"
+    assert stored["pickup_zip"] == "98101"
     assert isinstance(stored["created_at"], int)
+    assert stored["updated_at"] == stored["created_at"]
+
+
+def test_listing_location_falls_back_to_pickup_zip(db):
+    created = firebase_store.create_marketplace_listing(
+        "owner-1",
+        {"title": "Drain pump", "listing_kind": "part", "price": 20, "pickup_zip": "98101"},
+        seller_name="Davide",
+    )
+
+    assert db.collection("listings").docs[created["id"]]["location"] == "98101"
 
 
 def test_seller_name_is_never_the_email(monkeypatch):

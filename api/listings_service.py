@@ -43,7 +43,8 @@ _LABEL_KEYS = {
 
 EDITABLE_FIELDS = (
     "title", "description", "category", "brand", "model", "part_number", "listing_kind", "condition",
-    "price", "image_urls", "handover_methods", "pickup_zip", "shipping_price_cents", "quantity",
+    "price", "image_urls", "handover_methods", "pickup_zip", "location", "shipping_price_cents",
+    "quantity",
 )
 
 
@@ -113,6 +114,7 @@ def public(listing: dict[str, Any], uid: str, now: int | None = None) -> dict[st
         "image_urls": [url for url in listing.get("image_urls") or [] if isinstance(url, str)],
         "handover_methods": list(listing.get("handover_methods") or []),
         "pickup_zip": listing.get("pickup_zip"),
+        "location": listing.get("location") or listing.get("pickup_zip"),
         "shipping_price_cents": listing.get("shipping_price_cents"),
         "seller_name": listing.get("seller_name") or "Community seller",
         "status": listing.get("status") or ACTIVE,

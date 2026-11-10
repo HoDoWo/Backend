@@ -97,6 +97,35 @@ class FakeBlob:
         self.uploaded = (data, content_type)
 
 
+def test_upload_listing_image_stores_the_bytes_in_firestore(fake_firestore):
+    image_id = firebase_store.upload_listing_image("user-1", b"jpg", "image/jpeg; charset=x")
+
+    saved = fake_firestore.store["listing_images"][image_id]
+    assert saved["owner_uid"] == "user-1"
+    assert saved["data"] == b"jpg"
+    assert saved["content_type"] == "image/jpeg"
+
+
+def test_get_listing_image_reads_a_stored_photo(fake_firestore):
+    image_id = firebase_store.upload_listing_image("user-1", b"jpg", "image/png")
+
+    assert firebase_store.get_listing_image(image_id) == (b"jpg", "image/png")
+    assert firebase_store.get_listing_image("missing") is None
+    assert firebase_store.get_listing_image("../other") is None
+
+
+def test_upload_listing_image_rejects_empty_bytes(fake_firestore):
+    with pytest.raises(ValueError, match="empty"):
+        firebase_store.upload_listing_image("user-1", b"")
+
+
+def test_upload_listing_image_rejects_oversized_photos(fake_firestore):
+    with pytest.raises(ValueError, match="900 KB"):
+        firebase_store.upload_listing_image(
+            "user-1", b"x" * (firebase_store.MAX_LISTING_IMAGE_BYTES + 1)
+        )
+
+
 def test_save_manual_uploads_the_photo(fake_firestore, monkeypatch):
     blobs = []
 

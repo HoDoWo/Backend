@@ -9,6 +9,31 @@ service cloud.firestore {
       return signedIn() && resource.data.owner_uid == request.auth.uid;
     }
 
+    function isUser(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // The user's own data, written by the app: profile (name, photo), registered
+    // appliances, chats and their messages, saved manuals, bookmarks and ratings.
+    // Firestore keeps a copy on the phone, so it works offline and syncs when the
+    // user signs in on another phone. Nobody else can read it.
+    match /users/{uid} {
+      allow read, write: if isUser(uid);
+
+      match /{document=**} {
+        allow read, write: if isUser(uid);
+      }
+    }
+
+    // Answer ratings of all users, for the team. The app only adds its own;
+    // nobody reads them from the app.
+    match /ratings/{ratingId} {
+      allow read, delete: if false;
+      allow create, update: if signedIn()
+                            && request.resource.data.userId == request.auth.uid
+                            && ratingId == request.auth.uid + '_' + string(request.resource.data.messageId);
+    }
+
     match /partner_products/{id} {
       allow read: if true;
       allow write: if false;
@@ -80,6 +105,17 @@ service cloud.firestore {
 
     match /forum_reports/{reportId} {
       allow read, write: if false;
+    }
+
+    // Buyer-seller conversations and offers: only the backend reads and writes
+    // them, so the other person's uid never reaches the app and an offer
+    // cannot be accepted by the one who made it.
+    match /conversations/{conversationId} {
+      allow read, write: if false;
+
+      match /messages/{messageId} {
+        allow read, write: if false;
+      }
     }
   }
 }

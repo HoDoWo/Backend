@@ -109,3 +109,29 @@ def test_retrieve_manual_rejects_text_without_json(monkeypatch):
 
     with pytest.raises(RuntimeError, match="invalid JSON"):
         manual_module.retrieve_manual("How do I start it?")
+
+
+def test_pins_are_kept_only_when_valid(monkeypatch):
+    raw = {
+        **_manual_result(),
+        "pins": [
+            {"step": 1, "x": 0.25, "y": 0.5},
+            {"step": 1, "x": 0.9, "y": 0.9},  # second pin of the same step
+            {"step": 2, "x": 1.5, "y": 0.5},  # outside the image
+            {"step": 3, "x": 0.5, "y": 0.5},  # no such step
+            {"step": True, "x": 0.5, "y": 0.5},
+            "not a pin",
+        ],
+    }
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: FakeModel(FakeResponse(json.dumps(raw))))
+
+    result = manual_module.retrieve_manual("How do I run a quick wash?")
+
+    assert result["pins"] == [{"step": 1, "x": 0.25, "y": 0.5}]
+
+
+def test_pins_that_are_not_a_list_become_empty(monkeypatch):
+    raw = {**_manual_result(), "pins": "top left"}
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: FakeModel(FakeResponse(json.dumps(raw))))
+
+    assert manual_module.retrieve_manual("How do I run a quick wash?")["pins"] == []

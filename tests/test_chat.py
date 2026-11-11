@@ -220,3 +220,23 @@ def test_format_chat_response_keeps_conversational_messages_compact():
         "reply": "You can attach a photo of the appliance and ask a question.",
         "image": None,
     }
+
+
+def test_format_chat_response_puts_the_pins_on_their_steps():
+    from response_formatting import format_chat_response as _format_chat_response
+
+    class ManualToolMessage:
+        content = (
+            '{"summary": "Start a wash cycle.", '
+            '"steps": ["Power On: Flip the switch.", "Start: Press the orange button."], '
+            '"pins": [{"step": 2, "x": 0.8, "y": 0.25}], "warnings": []}'
+        )
+
+    class OverlayToolMessage:
+        # The overlay repeats the steps without pins: the pins still come from the manual.
+        content = '{"image_url": "https://output.example/guide.png", "steps": ["Power On", "Start"]}'
+
+    formatted = _format_chat_response([ManualToolMessage(), OverlayToolMessage()], None, "How do I start it?")
+
+    assert "pin" not in formatted["steps"][0]
+    assert formatted["steps"][1]["pin"] == {"x": 0.8, "y": 0.25}

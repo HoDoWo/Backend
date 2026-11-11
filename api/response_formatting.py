@@ -56,6 +56,7 @@ def format_chat_response(
     image_url = generated_image or find_generated_image(messages)
     reply = assistant_text(messages)
     steps = format_steps(manual_info.get("steps", [])) if manual_info else []
+    _add_pins(steps, tool_results)
     if not steps:
         steps = extract_text_steps(reply)
     if not steps:
@@ -100,6 +101,20 @@ def assistant_text(messages: list[object]) -> str:
         if content:
             return str(content).strip()
     return "Here is the guidance for your appliance."
+
+
+def _add_pins(steps: list[dict[str, Any]], tool_results: list[dict[str, Any]]) -> None:
+    """Put on each step the point of the photo it refers to, when the manual has one.
+
+    The app shows them as numbered pins over the guide image (review 10-11).
+    """
+    manual = next((item for item in reversed(tool_results) if isinstance(item.get("pins"), list)), None)
+    if manual is None:
+        return
+    for pin in manual["pins"]:
+        index = pin.get("step") - 1 if isinstance(pin, dict) and isinstance(pin.get("step"), int) else -1
+        if 0 <= index < len(steps):
+            steps[index]["pin"] = {"x": pin["x"], "y": pin["y"]}
 
 
 def format_steps(raw_steps: list[Any]) -> list[dict[str, Any]]:

@@ -273,6 +273,10 @@ def test_chat_adds_rated_guides_of_the_same_appliance(monkeypatch):
     prompt = agent.request["messages"][-1]["content"]
     assert 'Rated helpful. Issue: "Descale the machine"' in prompt
     assert prompt.endswith("User question: How do I descale it?")
+    # The model knows which appliance the chat is about, so it does not ask for a photo again.
+    assert prompt.startswith(
+        "Appliance the user is talking about (already identified in this chat): DeLonghi Espresso machine\n\n"
+    )
 
 
 def test_chat_with_photo_reads_the_appliance_form_field(monkeypatch):
@@ -308,3 +312,12 @@ def test_chat_without_appliance_does_not_read_firestore(monkeypatch):
 
     assert result.status_code == 200
     assert agent.request["messages"][-1]["content"] == "Hello"
+
+
+def test_the_appliance_is_named_even_without_rated_guides():
+    import request_helpers
+
+    assert request_helpers.with_appliance("Which capsules?", "Espresso machine") == (
+        "Appliance the user is talking about (already identified in this chat): Espresso machine\n\nWhich capsules?"
+    )
+    assert request_helpers.with_appliance("Which capsules?", None) == "Which capsules?"

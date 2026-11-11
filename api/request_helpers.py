@@ -58,3 +58,15 @@ def parse_history(raw_history: Any) -> list[dict[str, str]]:
                 "content": content,
             })
     return parsed
+
+
+def with_appliance(prompt: str, appliance_name: str | None) -> str:
+    """Tell the model which appliance the chat is about (sent by the app with every question).
+
+    Without it a follow-up question such as "which capsules can I buy?" looks
+    like a question about an unknown appliance, and the model asks for a photo
+    the user already sent earlier in the chat.
+    """
+    if not appliance_name:
+        return prompt
+    return f"Appliance the user is talking about (already identified in this chat): {appliance_name}\n\n{prompt}"

@@ -67,8 +67,9 @@ async def chat_stream(request: Request):
                 prompt += f"\nUploaded image path: {image_path}"
 
             # Rated guides of the same appliance (#40).
-            prompt = reinforcement.add_to_prompt(
-                prompt, reinforcement.appliance_name_from(appliance_raw)
+            appliance_name = reinforcement.appliance_name_from(appliance_raw)
+            prompt = request_helpers.with_appliance(
+                reinforcement.add_to_prompt(prompt, appliance_name), appliance_name
             )
 
             conversation_messages = request_helpers.parse_history(history_raw)

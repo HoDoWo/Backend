@@ -21,6 +21,7 @@ from endpoints import (  # noqa: E402
     chat,
     checkout,
     chat_stream,
+    conversations,
     environmental_tip,
     forum,
     listing_ai,
@@ -54,6 +55,7 @@ app.include_router(forum.forum_router)
 app.include_router(partner_catalogue.partner_products_router)
 app.include_router(listings.listings_router)
 app.include_router(listing_ai.listing_ai_router)
+app.include_router(conversations.conversations_router)
 
 
 

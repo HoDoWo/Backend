@@ -181,3 +181,10 @@ forum_rate_limit = limiter.limit(
     os.getenv("FORUM_RATE_LIMIT", DEFAULT_FORUM_RATE_LIMIT).strip() or DEFAULT_FORUM_RATE_LIMIT,
     key_func=_user_or_ip,
 )
+
+# Messages and offers between buyers and sellers: a chat, but not spam.
+DEFAULT_MESSAGES_RATE_LIMIT = "30/minute"
+messages_rate_limit = limiter.limit(
+    os.getenv("MESSAGES_RATE_LIMIT", DEFAULT_MESSAGES_RATE_LIMIT).strip() or DEFAULT_MESSAGES_RATE_LIMIT,
+    key_func=_user_or_ip,
+)

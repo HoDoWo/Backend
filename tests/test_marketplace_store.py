@@ -115,3 +115,14 @@ def test_a_listing_with_items_left_stays_active(db):
 
     fields = {path: f for _, path, f in db.commits[0]}
     assert fields["listings/pans"] == {"quantity": 2, "updated_at": 5}
+
+
+def test_a_paid_offer_is_marked_used_in_the_same_batch(db):
+    db.docs["listings/fridge-2"] = {"status": "active"}
+    order = {"order_id": "o3", "uid": "buyer-1", "cart_item_ids": [],
+             "items": [{"product_type": "used", "product_id": "fridge-2", "quantity": 1, "offer_id": "of1"}]}
+
+    marketplace_store.fulfil_order(order, paid_at=7)
+
+    fields = {path: f for _, path, f in db.commits[0]}
+    assert fields["conversations/fridge-2__buyer-1"] == {"offer_used": "of1", "updated_at": 7}

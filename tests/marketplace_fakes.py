@@ -16,6 +16,7 @@ class FakeStore:
         self.items: dict[tuple[str, str], dict] = {}
         self.orders: dict[str, dict] = {}
         self.events: set[str] = set()
+        self.used_offers: list[str] = []
 
     # catalogue and cart
     def get_cart_items(self, uid):
@@ -92,6 +93,8 @@ class FakeStore:
                 stored["quantity"] = max(offered - item["quantity"], 0)
                 if stored["quantity"] == 0:
                     stored["status"] = "sold"
+                if item.get("offer_id"):
+                    self.used_offers.append(item["offer_id"])
             else:
                 stored["stock"] -= item["quantity"]
         for cart_item_id in order["cart_item_ids"]:
@@ -252,3 +255,46 @@ class FakeListingsStore:
 
     def update_listing(self, listing_id, fields):
         self.listings[listing_id].update(copy.deepcopy(fields))
+
+
+class FakeConversationStore:
+    """In-memory stand-in for conversations_store."""
+
+    def __init__(self):
+        self.conversations: dict[str, dict] = {}
+        self.messages: dict[str, list[dict]] = {}
+        self.counter = 0
+
+    def get_conversation(self, conv_id):
+        row = self.conversations.get(conv_id)
+        return {**copy.deepcopy(row), "id": conv_id} if row is not None else None
+
+    def create_conversation(self, conv_id, data):
+        if conv_id in self.conversations:
+            return False
+        self.conversations[conv_id] = copy.deepcopy(data)
+        self.messages[conv_id] = []
+        return True
+
+    def list_for_user(self, uid):
+        return [
+            {**copy.deepcopy(row), "id": conv_id}
+            for conv_id, row in self.conversations.items()
+            if uid in (row.get("buyer_uid"), row.get("seller_uid"))
+        ]
+
+    def update_conversation(self, conv_id, fields):
+        self.conversations[conv_id].update(copy.deepcopy(fields))
+
+    def add_message(self, conv_id, message, fields, unread_role):
+        self.counter += 1
+        message_id = f"m{self.counter}"
+        self.messages[conv_id].append({**copy.deepcopy(message), "id": message_id})
+        self.update_conversation(conv_id, fields)
+        if unread_role:
+            row = self.conversations[conv_id]
+            row[f"unread_{unread_role}"] = row.get(f"unread_{unread_role}", 0) + 1
+        return message_id
+
+    def list_messages(self, conv_id, limit=200):
+        return copy.deepcopy(self.messages.get(conv_id, [])[-limit:])

@@ -101,6 +101,21 @@ def availability_problem(uid: str, product_type: str, item: dict[str, Any] | Non
     return None
 
 
+def unit_price(uid: str, product_type: str, product_id: str, item: dict[str, Any]) -> tuple[int, str | None]:
+    """The price ``uid`` pays for one unit, and the accepted offer behind it (None: list price).
+
+    Shared by the cart and the checkout, so both charge an offer the seller accepted.
+    """
+    import conversations_service  # imported here: it imports this module
+
+    price = int(item["price_cents"])
+    if product_type == "used":
+        agreed = conversations_service.accepted_price(uid, product_id, price)
+        if agreed is not None:
+            return agreed
+    return price, None
+
+
 def _priced_lines(uid: str, cart_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Resolve every cart line against the catalogue, or refuse the checkout."""
     store = get_store()
@@ -124,7 +139,7 @@ def _priced_lines(uid: str, cart_items: list[dict[str, Any]]) -> list[dict[str, 
         if problem:
             problems.append({"product_id": product_id, "reason": problem})
             continue
-        price = item["price_cents"]
+        price, offer_id = unit_price(uid, product_type, product_id, item)
 
         lines.append(
             {
@@ -136,6 +151,7 @@ def _priced_lines(uid: str, cart_items: list[dict[str, Any]]) -> list[dict[str, 
                 "quantity": quantity,
                 "unit_price_cents": price,
                 "price_cents": price * quantity,
+                "offer_id": offer_id,
             }
         )
 
@@ -162,7 +178,9 @@ def _build_orders(uid: str, checkout_id: str, lines: list[dict[str, Any]], curre
                 "uid": uid,
                 "seller_id": seller_id,
                 "items": [
-                    {key: line[key] for key in ("product_type", "product_id", "title", "quantity", "unit_price_cents", "price_cents")}
+                    {key: line[key] for key in (
+                        "product_type", "product_id", "title", "quantity", "unit_price_cents", "price_cents", "offer_id",
+                    )}
                     for line in seller_lines
                 ],
                 "cart_item_ids": [line["cart_item_id"] for line in seller_lines],

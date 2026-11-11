@@ -59,6 +59,7 @@ keys: the repository is public.
 | `ALLOWED_ORIGINS` | no | Comma-separated CORS origins; defaults to `http://localhost:3000,https://app.hodowo.com`. Never `*` |
 | `AI_RATE_LIMIT` | no | Limit for AI endpoints; defaults to `20/minute` |
 | `FORUM_RATE_LIMIT` | no | Limit for forum posts, edits, votes and reports, per user; defaults to `10/minute` |
+| `MESSAGES_RATE_LIMIT` | no | Limit for messages and offers between buyers and sellers, per user; defaults to `30/minute` |
 | `HODOWO_ENV` | no | `dev` (default) or `prod` (JSON logs) |
 | `JWT_SECRET` / `JWT_JWKS_URL` | one of them | JWT verification; set exactly one |
 | `STRIPE_SECRET_KEY` | no | Stripe **test** secret key (`sk_test_...`); live keys are refused. Without it the checkout is simulated |
@@ -207,6 +208,34 @@ errors are `422` with the field in `detail[].loc`. `condition` is one of
 also accepts the labels the app shows ("Like new", "Used, good", "For parts").
 Responses carry `condition_label`, `posted_ago` and `is_mine`, never the
 owner's uid; marketplace search does not return it either.
+
+### Messages and offers between buyers and sellers
+
+A buyer can message the seller of a second-hand listing and make an offer, as
+on Vinted. There is one conversation per listing and buyer.
+
+| Route | What it does |
+|---|---|
+| `POST /api/marketplace/conversations` | `{"listing_id", "text"?}`: opens the conversation with the seller (the same one if it exists) |
+| `GET /api/marketplace/conversations` | The inbox, most recent first, with `unread` per conversation and in total |
+| `GET /api/marketplace/conversations/{id}` | The conversation with its messages; marks it as read |
+| `POST /api/marketplace/conversations/{id}/messages` | `{"text"}` (1-1000 characters) |
+| `POST /api/marketplace/conversations/{id}/offers` | `{"amount_cents"}`: the buyer's offer, or the seller's counter-offer to a pending one |
+| `POST /api/marketplace/conversations/{id}/offer/accept` | Accepts the other person's pending offer |
+| `POST /api/marketplace/conversations/{id}/offer/decline` | Declines it |
+
+* An offer is between 50 % of the price and the price, at most 10 per
+  conversation. It waits 24 hours for an answer; you cannot answer your own.
+* An accepted offer can be paid for 48 hours: the cart shows the listing at
+  the offered price (`offer_id`, `list_price_cents`) and the checkout charges
+  it. After the payment the offer is used. If the seller lowers the listing
+  below the offer, the lower price wins.
+* Only listings of other users can be negotiated; partner products have
+  fixed prices. A sold listing can still be talked about, not negotiated.
+* The app sees `role` (`buying` / `selling`), the other person's name and
+  `mine` on each message, never a uid. Only the backend reads and writes
+  `conversations` (see `firestore.rules`). Messages and offers are rate
+  limited per user (`MESSAGES_RATE_LIMIT`, default `30/minute`).
 
 ### Marketplace checkout (Stripe test mode)
 

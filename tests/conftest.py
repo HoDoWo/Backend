@@ -34,3 +34,14 @@ def reset_rate_limiter():
     config.limiter.reset()
     yield
     config.limiter.reset()
+
+
+@pytest.fixture(autouse=True)
+def conversations(monkeypatch):
+    """No real Firestore for buyer-seller conversations: the cart asks them for agreed prices."""
+    import conversations_service
+    from marketplace_fakes import FakeConversationStore
+
+    fake = FakeConversationStore()
+    monkeypatch.setattr(conversations_service, "get_store", lambda: fake)
+    return fake

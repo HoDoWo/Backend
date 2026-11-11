@@ -79,6 +79,29 @@ def _normalise_lists(result: dict[str, Any]) -> None:
             result[field] = [_as_text(item) for item in result[field]]
 
 
+def _clean_pins(result: dict[str, Any]) -> None:
+    """Keep only valid pins: {"step": n, "x": 0..1, "y": 0..1}, one per step.
+
+    Pins are optional (the photo may not show the control of a step): a wrong
+    pin is dropped instead of failing the whole manual.
+    """
+    if "pins" not in result:
+        return
+    raw = result["pins"] if isinstance(result["pins"], list) else []
+    steps = len(result.get("steps") or [])
+    pins: dict[int, dict[str, Any]] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        step, x, y = item.get("step"), item.get("x"), item.get("y")
+        if isinstance(step, bool) or not isinstance(step, int) or not 1 <= step <= steps:
+            continue
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1 for v in (x, y)):
+            continue
+        pins.setdefault(step, {"step": step, "x": round(float(x), 4), "y": round(float(y), 4)})
+    result["pins"] = [pins[step] for step in sorted(pins)]
+
+
 def _parse_response(content: Any) -> dict[str, Any]:
     if isinstance(content, list):
         content = "".join(
@@ -95,6 +118,8 @@ def _parse_response(content: Any) -> dict[str, Any]:
         logger.warning("Manual retrieval returned invalid JSON: %.500s", content)
         raise RuntimeError("Manual retrieval returned invalid JSON")
     _normalise_lists(result)
+    if isinstance(result, dict):
+        _clean_pins(result)
 
     if not isinstance(result, dict) or not REQUIRED_MANUAL_FIELDS.issubset(result):
         raise RuntimeError("Manual retrieval response is missing required fields")
@@ -168,8 +193,13 @@ def retrieve_manual(
                     "containing appliance_name, brand, model, identification_confidence, "
                     "visible_evidence, needs_better_image, summary, steps (array of "
                     "strings), warnings (array of strings), needs_clarification "
-                    "(boolean), and confidence (number from 0 to 1). Use null for "
-                    "unknown appliance fields."
+                    "(boolean), confidence (number from 0 to 1) and pins. Use null for "
+                    "unknown appliance fields. pins marks on the image where each step "
+                    "happens: an array of {\"step\": step number from 1, \"x\": 0..1 "
+                    "from the left edge, \"y\": 0..1 from the top edge} at the centre "
+                    "of the button, dial or part the step uses. Add a pin only for a "
+                    "control you can actually see in the image; use [] when there is "
+                    "no image or you are not sure."
                 ),
             ),
             (

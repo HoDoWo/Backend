@@ -4,6 +4,7 @@ LangChain agent construction for the HoDoWo appliance assistant.
 
 import os
 import json
+import types
 from typing import Any
 
 from langchain.agents import create_agent
@@ -91,6 +92,10 @@ def ensure_image_overlay(
         if manual is None:
             try:
                 manual = retrieve_manual(user_request, image_path)
+                # The agent answered without calling the manual tool: keep this
+                # manual with the tool results, so the answer has its steps (and
+                # pins) even when the overlay below fails (e.g. no Kie credits).
+                messages.append(types.SimpleNamespace(type="tool", content=json.dumps(manual)))
             except ValueError as exc:
                 manual = clarification_manual(str(exc))
 

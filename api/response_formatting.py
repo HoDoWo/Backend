@@ -16,6 +16,10 @@ else:
     from langchain_setup import _json_tool_results
 
 
+# Shown when the agent finished without writing any text.
+DEFAULT_REPLY = "Here is the guidance for your appliance."
+
+
 def find_generated_image(messages: list[object]) -> str | None:
     for message in reversed(messages):
         content = getattr(message, "content", None)
@@ -55,6 +59,9 @@ def format_chat_response(
     )
     image_url = generated_image or find_generated_image(messages)
     reply = assistant_text(messages)
+    if reply == DEFAULT_REPLY and manual_info and str(manual_info.get("summary") or "").strip():
+        # The agent wrote nothing of its own: the manual's summary says more than the placeholder.
+        reply = str(manual_info["summary"]).strip()
     steps = format_steps(manual_info.get("steps", [])) if manual_info else []
     _add_pins(steps, tool_results)
     if not steps:
@@ -100,7 +107,7 @@ def assistant_text(messages: list[object]) -> str:
             )
         if content:
             return str(content).strip()
-    return "Here is the guidance for your appliance."
+    return DEFAULT_REPLY
 
 
 def _add_pins(steps: list[dict[str, Any]], tool_results: list[dict[str, Any]]) -> None:

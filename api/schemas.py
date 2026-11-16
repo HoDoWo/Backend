@@ -74,7 +74,7 @@ class MarketplaceListingRequest(BaseModel):
     listing_kind: str = Field(pattern="^(appliance|part)$")
     condition: str = Field(pattern="^(unopened|like-new|used-good|parts-only|refurbished)$")
     price: float = Field(gt=0, le=100000)
-    image_urls: List[str] = Field(min_length=1, max_length=8)
+    image_urls: List[str] = Field(min_length=1, max_length=6)
     diagnostic_media_urls: List[str] = Field(default_factory=list, max_length=8)
     handover_methods: List[str] = Field(min_length=1, max_length=2)
     pickup_zip: Optional[str] = Field(default=None, max_length=20)
@@ -137,7 +137,7 @@ class MarketplaceListingUpdateRequest(BaseModel):
     listing_kind: Optional[Literal["appliance", "part"]] = None
     condition: Optional[str] = Field(default=None, min_length=3, max_length=30)
     price: Optional[float] = Field(default=None, gt=0, le=100000)
-    image_urls: Optional[List[str]] = Field(default=None, min_length=1, max_length=8)
+    image_urls: Optional[List[str]] = Field(default=None, min_length=1, max_length=6)
     handover_methods: Optional[List[Literal["pickup", "shipping"]]] = Field(default=None, min_length=1, max_length=2)
     pickup_zip: Optional[str] = Field(default=None, max_length=20)
     location: Optional[str] = Field(default=None, max_length=120)

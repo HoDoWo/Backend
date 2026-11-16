@@ -285,14 +285,43 @@ def get_listing_image(image_id: str) -> tuple[bytes, str] | None:
     return raw, str(data.get("content_type") or "image/jpeg")
 
 
+_LISTING_IMAGE_URL = re.compile(r"/api/marketplace/listings/images/([A-Za-z0-9_-]+)$")
+
+
+def listing_image_id(url: str) -> str | None:
+    """Id of a photo served by this backend, or None for any other URL."""
+    match = _LISTING_IMAGE_URL.search(str(url or "").split("?")[0])
+    return match.group(1) if match else None
+
+
+def delete_listing_image(user_uid: str, image_id: str) -> bool:
+    """Delete a stored photo, only when ``user_uid`` uploaded it."""
+    ref = get_firestore_client().collection(LISTING_IMAGES_COLLECTION).document(image_id)
+    snapshot = ref.get()
+    if not snapshot.exists or (snapshot.to_dict() or {}).get("owner_uid") != user_uid:
+        return False
+    ref.delete()
+    return True
+
+
 def delete_marketplace_listing(user_uid: str, listing_id: str) -> bool:
     ref = get_firestore_client().collection("listings").document(listing_id)
     snapshot = ref.get()
     if not snapshot.exists:
         return False
-    if (snapshot.to_dict() or {}).get("owner_uid") != user_uid:
+    listing = snapshot.to_dict() or {}
+    if listing.get("owner_uid") != user_uid:
         raise LookupError("listing is not owned by the current user")
     ref.delete()
+    # The photos go with the listing. Best effort: a failure must not bring the
+    # listing back, and a leftover photo is only a few hundred KB.
+    for url in listing.get("image_urls") or []:
+        image_id = listing_image_id(url)
+        if image_id:
+            try:
+                delete_listing_image(user_uid, image_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Photo %s of listing %s could not be deleted: %s", image_id, listing_id, exc)
     return True
 
 

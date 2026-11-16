@@ -9,3 +9,4 @@ slowapi
 firebase-admin
 aiofiles
 stripe
+pillow

@@ -1,4 +1,7 @@
+import io
+
 from fastapi.testclient import TestClient
+from PIL import Image
 
 import firebase_store
 from index import app
@@ -6,6 +9,12 @@ from jwt_helpers import bearer, make_token
 
 
 client = TestClient(app)
+
+
+def photo(width=100, height=80, fmt="JPEG") -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (width, height), "red").save(out, fmt)
+    return out.getvalue()
 
 
 def test_upload_listing_image_stores_the_photo(monkeypatch):
@@ -20,16 +29,13 @@ def test_upload_listing_image_stores_the_photo(monkeypatch):
     result = client.post(
         "/api/marketplace/listings/images",
         headers=bearer(make_token(sub="seller-1")),
-        files={"image": ("photo.jpg", b"image-bytes", "image/jpeg")},
+        files={"image": ("photo.jpg", photo(), "image/jpeg")},
     )
 
     assert result.status_code == 201
     assert result.json()["url"].endswith("/api/marketplace/listings/images/image-42")
-    assert captured == {
-        "uid": "seller-1",
-        "image": b"image-bytes",
-        "content_type": "image/jpeg",
-    }
+    assert captured["uid"] == "seller-1" and captured["content_type"] == "image/jpeg"
+    assert Image.open(io.BytesIO(captured["image"])).format == "JPEG"
 
 
 def test_upload_listing_image_needs_an_image():
@@ -40,6 +46,60 @@ def test_upload_listing_image_needs_an_image():
     )
 
     assert result.status_code == 415
+
+
+def test_upload_listing_image_is_compressed_to_1600px_jpeg(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(firebase_store, "upload_listing_image",
+                        lambda uid, data, content_type: captured.update(image=data) or "image-1")
+
+    result = client.post(
+        "/api/marketplace/listings/images", headers=bearer(make_token()),
+        files={"image": ("big.png", photo(3200, 2400, "PNG"), "image/png")},
+    )
+
+    assert result.status_code == 201
+    stored = Image.open(io.BytesIO(captured["image"]))
+    assert stored.format == "JPEG" and stored.size == (1600, 1200)
+
+
+def test_upload_listing_image_rejects_files_over_5_mb(monkeypatch):
+    monkeypatch.setattr(firebase_store, "upload_listing_image", lambda *a: "never")
+
+    result = client.post(
+        "/api/marketplace/listings/images", headers=bearer(make_token()),
+        files={"image": ("huge.jpg", b"0" * (5 * 1024 * 1024 + 1), "image/jpeg")},
+    )
+
+    assert result.status_code == 413
+    assert "5 MB" in result.json()["detail"]
+
+
+def test_upload_listing_image_rejects_a_file_that_is_not_an_image(monkeypatch):
+    monkeypatch.setattr(firebase_store, "upload_listing_image", lambda *a: "never")
+
+    result = client.post(
+        "/api/marketplace/listings/images", headers=bearer(make_token()),
+        files={"image": ("fake.jpg", b"not an image", "image/jpeg")},
+    )
+
+    assert result.status_code == 422
+
+
+def test_a_listing_takes_at_most_6_photos():
+    body = {
+        "title": "Bosch washer", "description": "Working well, tested and cleaned before sale.",
+        "category": "washing machine", "listing_kind": "appliance", "condition": "used-good",
+        "price": 100, "handover_methods": ["pickup"],
+    }
+    urls = [f"https://example.test/{n}.jpg" for n in range(7)]
+
+    too_many = client.post("/api/marketplace/listings", headers=bearer(make_token()),
+                           json={**body, "image_urls": urls})
+    edit = client.patch("/api/marketplace/listings/abc", headers=bearer(make_token()),
+                        json={"image_urls": urls})
+
+    assert too_many.status_code == 422 and edit.status_code == 422
 
 
 def test_listing_image_is_public_and_returns_the_bytes(monkeypatch):

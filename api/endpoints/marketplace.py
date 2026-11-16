@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import pathlib
 from typing import Literal
 
 import auth
 import firebase_store
+import listing_images
 import request_helpers
 import schemas
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -72,8 +72,8 @@ async def create_listing(payload: schemas.MarketplaceListingRequest, request: Re
 async def upload_listing_image(request: Request):
     """Store one sell-form photo and return the URL to put in ``image_urls``.
 
-    Photos are stored server-side so the app does not need Firebase Storage
-    rules or a configured bucket to publish a listing.
+    The photo is validated (5 MB at most), scaled down to 1600 px wide and
+    re-encoded as JPEG. A listing takes up to 6 photos.
     """
     if not request.headers.get("content-type", "").startswith("multipart/form-data"):
         raise HTTPException(status_code=415, detail="send the photo as multipart/form-data")
@@ -88,18 +88,16 @@ async def upload_listing_image(request: Request):
     if not uid:
         raise HTTPException(status_code=401, detail="authenticated user id is missing")
 
-    image_path = await request_helpers.save_uploaded_image(image, "listing.jpg")
+    # One byte more than the limit is enough to know it is too big.
+    content = await image.read(listing_images.MAX_UPLOAD_BYTES + 1)
     try:
-        image_bytes = pathlib.Path(image_path).read_bytes()
-        image_id = firebase_store.upload_listing_image(
-            uid, image_bytes, image.content_type or "image/jpeg"
-        )
+        image_id = listing_images.save(uid, listing_images.compress(content))
+    except listing_images.ImageError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except (firebase_store.FirebaseConfigurationError, RuntimeError) as exc:
+    except (firebase_store.FirebaseConfigurationError, RuntimeError, OSError) as exc:
         raise HTTPException(status_code=503, detail="image storage is unavailable") from exc
-    finally:
-        pathlib.Path(image_path).unlink(missing_ok=True)
 
     base_url = str(request.base_url).rstrip("/")
     return {"url": f"{base_url}/api/marketplace/listings/images/{image_id}"}
@@ -109,8 +107,8 @@ async def upload_listing_image(request: Request):
 async def get_listing_image(image_id: str):
     """Serve a stored listing photo. Public: marketplace photos are not private."""
     try:
-        found = firebase_store.get_listing_image(image_id)
-    except (firebase_store.FirebaseConfigurationError, RuntimeError) as exc:
+        found = listing_images.load(image_id)
+    except (firebase_store.FirebaseConfigurationError, RuntimeError, OSError) as exc:
         raise HTTPException(status_code=503, detail="image storage is unavailable") from exc
     if found is None:
         raise HTTPException(status_code=404, detail="image not found")

@@ -26,6 +26,12 @@ def jwt_env(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def listing_images_in_firestore(monkeypatch):
+    """Listing photos use the (faked) Firestore path, never a folder in the repo."""
+    monkeypatch.setenv("LISTING_IMAGES_BACKEND", "firestore")
+
+
+@pytest.fixture(autouse=True)
 def reset_rate_limiter():
     """Clear the in-memory rate-limit counters so tests are independent."""
     import config

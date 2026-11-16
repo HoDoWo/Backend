@@ -135,3 +135,13 @@ def test_pins_that_are_not_a_list_become_empty(monkeypatch):
     monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: FakeModel(FakeResponse(json.dumps(raw))))
 
     assert manual_module.retrieve_manual("How do I run a quick wash?")["pins"] == []
+
+def test_the_model_is_asked_for_a_pin_on_every_step_it_can_see(monkeypatch):
+    model = FakeModel(FakeResponse(json.dumps(_manual_result())))
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
+
+    manual_module.retrieve_manual("How do I run a quick wash?")
+
+    system_text = model.messages[0][1]
+    assert "every step that uses something visible" in system_text
+    assert "repeat its point for each" in system_text

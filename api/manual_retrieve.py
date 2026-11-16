@@ -197,9 +197,12 @@ def retrieve_manual(
                     "unknown appliance fields. pins marks on the image where each step "
                     "happens: an array of {\"step\": step number from 1, \"x\": 0..1 "
                     "from the left edge, \"y\": 0..1 from the top edge} at the centre "
-                    "of the button, dial or part the step uses. Add a pin only for a "
-                    "control you can actually see in the image; use [] when there is "
-                    "no image or you are not sure."
+                    "of the button, dial, label or part the step uses. Give a pin to "
+                    "every step that uses something visible in the image, also when "
+                    "several steps use the same control (repeat its point for each "
+                    "of them) and for a programme label printed around a dial. Leave "
+                    "out only steps that use nothing you can see (a safety note, "
+                    "waiting); use [] when there is no image or you are not sure."
                 ),
             ),
             (

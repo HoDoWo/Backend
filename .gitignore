@@ -6,3 +6,5 @@
 !**/.env.example
 **.pytest_cache/
 **__pycache__/
+# Listing photos saved on disk when Firebase is not configured (dev)
+.local_uploads/

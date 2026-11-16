@@ -30,6 +30,7 @@ from endpoints import (  # noqa: E402
     locate_buttons,
     manuals,
     marketplace,
+    notifications,
     rating,
 )
 from fastapi import FastAPI, HTTPException, Request, responses  # noqa: E402
@@ -56,6 +57,7 @@ app.include_router(partner_catalogue.partner_products_router)
 app.include_router(listings.listings_router)
 app.include_router(listing_ai.listing_ai_router)
 app.include_router(conversations.conversations_router)
+app.include_router(notifications.notifications_router)
 
 
 

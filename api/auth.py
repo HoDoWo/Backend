@@ -43,7 +43,8 @@ PUBLIC_PATHS = frozenset(
 # Prefixes reachable without a token. Listing photos are shown to every user
 # browsing the marketplace, so requiring a token would break the image URLs.
 # The trailing slash keeps the protected POST /listings/images upload out.
-PUBLIC_PATH_PREFIXES = ("/api/marketplace/listings/images/",)
+# The catalogue images of the seed products and parts are static files.
+PUBLIC_PATH_PREFIXES = ("/api/marketplace/listings/images/", "/catalogue-images/")
 
 
 def is_public_path(path: str) -> bool:

@@ -36,6 +36,7 @@ from endpoints import (  # noqa: E402
 )
 from fastapi import FastAPI, HTTPException, Request, responses  # noqa: E402
 from fastapi.middleware import cors  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 from slowapi import errors  # noqa: E402
 
 logger = logging_config.get_logger(__name__)
@@ -60,6 +61,12 @@ app.include_router(listing_ai.listing_ai_router)
 app.include_router(conversations.conversations_router)
 app.include_router(notifications.notifications_router)
 app.include_router(reviews.reviews_router)
+
+# Images of the curated seed products and parts (scripts/seed/*.csv image_url).
+# Public, like the listing photos: the app loads them without a token.
+CATALOGUE_IMAGES_DIR = pathlib.Path(__file__).parent / "static" / "catalogue"
+CATALOGUE_IMAGES_PATH = "/catalogue-images"
+app.mount(CATALOGUE_IMAGES_PATH, StaticFiles(directory=CATALOGUE_IMAGES_DIR), name="catalogue-images")
 
 
 
@@ -117,8 +124,12 @@ async def security_headers(request: Request, call_next):
     response = await call_next(request)
     for name, value in SECURITY_HEADERS.items():
         response.headers[name] = value
-    # Answers depend on the user's token: no browser or proxy may store them.
-    response.headers.setdefault("Cache-Control", "no-store")
+    if request.url.path.startswith(CATALOGUE_IMAGES_PATH + "/"):
+        # The same static image for everyone: phones may keep it for a day.
+        response.headers["Cache-Control"] = "public, max-age=86400"
+    else:
+        # Answers depend on the user's token: no browser or proxy may store them.
+        response.headers.setdefault("Cache-Control", "no-store")
     return response
 
 @app.get("/health")

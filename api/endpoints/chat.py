@@ -9,6 +9,7 @@ import fastapi
 import firebase_store
 import langchain_setup
 import logging_config
+import part_suggestions
 import reinforcement
 import request_helpers
 import response_formatting
@@ -80,6 +81,7 @@ async def chat(request: fastapi.Request) -> dict[str, Any]:
         generated_image = langchain_setup.ensure_image_overlay(messages, image_path, message)
         formatted = response_formatting.format_chat_response(messages, image_path, message, generated_image)
         formatted = _persist_generated_manual(request, formatted, image_path=image_path)
+        formatted = part_suggestions.attach_to_response(formatted, message)
         if request.query_params.get("structured") == "true" or request.headers.get("x-response-format") == "structured":
             return formatted
         return formatted

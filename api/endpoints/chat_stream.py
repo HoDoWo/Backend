@@ -8,6 +8,7 @@ import config
 import fastapi
 import langchain_setup
 import logging_config
+import part_suggestions
 import reinforcement
 import request_helpers
 import response_formatting
@@ -139,6 +140,7 @@ async def chat_stream(request: Request):
             # Pass image_path into the persistence function before the temporary file gets unlinked
             formatted = response_formatting.format_chat_response(messages, image_path, message, generated_image)
             formatted = chat._persist_generated_manual(request, formatted, image_path=image_path)
+            formatted = part_suggestions.attach_to_response(formatted, message)
 
             # Token streaming is retained for ordinary conversations only.
             # Manual/image workflows expose one authoritative final response.

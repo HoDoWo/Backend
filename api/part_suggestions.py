@@ -10,8 +10,9 @@ The suggestion carries a ``confidence``: only suggestions at or above
 the part only when the diagnosis really points to it.
 
     error code matched for the brand      0.90
+    the part named by the user            0.85 ("the pump broke", "è rotta la pompa")
     error code of one brand only          0.80 (brand not given)
-    symptom described by the user         0.75
+    symptom described by the user         0.75 (English, Italian, Spanish)
     the part fits the exact model         +0.05
     the model is known and it does not    -0.10
 """
@@ -116,6 +117,33 @@ SYMPTOMS: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
      SPRAY_ARM, (DISHWASHER,)),
 ]
 
+# The part named by the user ("the pump broke", "è rotta la pompa", "la bomba de desagüe"),
+# in English, Italian and Spanish: the strongest hint after an error code.
+NAMED_PARTS: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
+    (re.compile(r"\bpumps?\b|\bpomp[ae]\b|\bbombas?\b", re.IGNORECASE), DRAIN_PUMP, (WASHER, DISHWASHER)),
+    (re.compile(r"door lock|interlock|blocc?o ?porta|bloccaporta|cierre de (?:la )?puerta", re.IGNORECASE),
+     DOOR_LOCK, (WASHER,)),
+    (re.compile(r"heating element|\bheater\b|\bresistenz[ae]\b|\bresistencias?\b", re.IGNORECASE),
+     HEATING_ELEMENT, (WASHER, DISHWASHER, OVEN)),
+    (re.compile(r"\bbelts?\b|\bcinghi[ae]\b|\bcorreas?\b", re.IGNORECASE), DRUM_BELT, (WASHER,)),
+    (re.compile(r"door seal|gasket|guarnizion[ei]|\bjuntas?\b", re.IGNORECASE), DOOR_SEAL, (WASHER, DISHWASHER, FRIDGE)),
+    (re.compile(r"thermostat|termostato", re.IGNORECASE), THERMOSTAT, (FRIDGE,)),
+    (re.compile(r"fan motor|\bventol[ae]\b|ventilador", re.IGNORECASE), FAN_MOTOR, (OVEN, FRIDGE)),
+    (re.compile(r"oven (?:lamp|bulb|light)|lampadina|bombilla", re.IGNORECASE), OVEN_LAMP, (OVEN,)),
+    (re.compile(r"spray arm|bracci[oa] (?:di )?lavaggio|brazo aspersor", re.IGNORECASE), SPRAY_ARM, (DISHWASHER,)),
+]
+
+# The same symptoms as SYMPTOMS, as Italian and Spanish users write them.
+LOCAL_SYMPTOMS: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
+    (re.compile(r"non scarica|non svuota|no desag[uü]a|no vac[ií]a|acqua (?:ferma|rimane)", re.IGNORECASE),
+     DRAIN_PUMP, (WASHER, DISHWASHER)),
+    (re.compile(r"(?:oblò|sportello|porta) non si apre|la puerta no (?:se )?abre", re.IGNORECASE),
+     DOOR_LOCK, (WASHER,)),
+    (re.compile(r"non scalda|no calienta", re.IGNORECASE), HEATING_ELEMENT, (WASHER, DISHWASHER, OVEN)),
+    (re.compile(r"(?:cestello|tamburo) non gira|el tambor no gira", re.IGNORECASE), DRUM_BELT, (WASHER,)),
+    (re.compile(r"non raffredda|no enfr[ií]a", re.IGNORECASE), THERMOSTAT, (FRIDGE,)),
+]
+
 CATEGORY_WORDS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"dish\s?washer", re.IGNORECASE), DISHWASHER),
     (re.compile(r"washing machine|washer|lavatrice|lavadora", re.IGNORECASE), WASHER),
@@ -183,9 +211,13 @@ def diagnose(text: str, brand: str | None = None, error_code: str | None = None,
             component, kind = hits.pop()
             if category in (None, kind):
                 return Diagnosis(component, (kind,), 0.8, f"error {code}")
-    for pattern, component, kinds in SYMPTOMS:
-        if text and pattern.search(text) and (category is None or category in kinds):
-            return Diagnosis(component, kinds if category is None else (category,), 0.75, "symptom described")
+    for patterns, confidence, reason in (
+        (NAMED_PARTS, 0.85, "part named"),
+        (SYMPTOMS + LOCAL_SYMPTOMS, 0.75, "symptom described"),
+    ):
+        for pattern, component, kinds in patterns:
+            if text and pattern.search(text) and (category is None or category in kinds):
+                return Diagnosis(component, kinds if category is None else (category,), confidence, reason)
     return None
 
 
@@ -215,16 +247,19 @@ def best_part(diagnosis: Diagnosis, parts: Iterable[dict[str, Any]], brand: str 
     if not candidates:
         return None
 
-    def rank(part: dict[str, Any]) -> tuple[int, int, float]:
+    def rank(part: dict[str, Any]) -> tuple[int, int, int, float]:
         return (
             0 if model and _same(part.get("model"), model) else 1,
             0 if brand and _same(part.get("brand"), brand) else 1,
+            # Without the appliance type, the most usual one first (a pump: the washing machine's).
+            diagnosis.categories.index(str(part.get("category") or "").lower()),
             float(part.get("price") or 0),
         )
 
     part = min(candidates, key=rank)
     fits = bool(model) and _same(part.get("model"), model)
-    compatible: bool | None = True if fits else (False if model else None)
+    other_brand = bool(brand) and not _same(part.get("brand"), brand)
+    compatible: bool | None = True if fits else (False if model or other_brand else None)
     confidence = diagnosis.confidence + (0.05 if fits else 0) - (0.1 if compatible is False else 0)
     return {
         "id": part["id"],
@@ -256,11 +291,28 @@ def suggest(text: str = "", brand: str | None = None, model: str | None = None,
     return part
 
 
-def attach_to_response(response: dict[str, Any], message: str) -> dict[str, Any]:
+# Brands looked for in the chat when the agent did not name one.
+KNOWN_BRANDS = sorted(
+    set(BRAND_FAMILIES) | {"beko", "edesa", "teka", "smeg", "haier", "miele", "fagor", "balay", "hisense", "gorenje"},
+    key=len, reverse=True,
+)
+
+
+def brand_in(text: str) -> str | None:
+    """The first appliance brand written in the text."""
+    for brand in KNOWN_BRANDS:
+        if re.search(rf"\b{re.escape(brand)}\b", text or "", re.IGNORECASE):
+            return brand
+    return None
+
+
+def attach_to_response(response: dict[str, Any], message: str, context: str = "") -> dict[str, Any]:
     """Adds ``suggested_part`` to a manual answer of the chat; the rest of the JSON is unchanged.
 
-    The user's message (with its error code or symptom), the answer and the
-    appliance found by the agent are read. Any failure leaves the answer as it is.
+    The user's message (with its error code, symptom or the part named), the
+    answer and the appliance found by the agent are read; ``context`` (the
+    earlier messages of the chat) gives the appliance type and brand when this
+    question does not ("which pump can I buy?"). Any failure leaves the answer as it is.
     """
     if not response.get("is_manual"):
         return response
@@ -268,9 +320,11 @@ def attach_to_response(response: dict[str, Any], message: str) -> dict[str, Any]
         text = "\n".join([message or "", str(response.get("issue_title") or "")])
         part = suggest(
             text=text,
-            brand=response.get("brand"),
+            brand=response.get("brand") or brand_in(f"{message}\n{context}"),
             model=response.get("model"),
-            category=category_of(message, str(response.get("appliance_name") or ""), str(response.get("reply") or "")),
+            category=category_of(
+                message, str(response.get("appliance_name") or ""), str(response.get("reply") or ""), context
+            ),
         )
     except Exception as exc:  # noqa: BLE001 - the answer must never fail because of the catalogue
         logger.warning("No spare part suggestion: %s", exc)

@@ -257,3 +257,9 @@ class ListingEstimateResponse(BaseModel):
     high: float
     currency: str = "USD"
     rationale: str = ""
+
+
+# Product reviews: 1 to 5 stars and an optional text (checked again after trimming).
+class ReviewRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    text: Optional[str] = Field(default=None, max_length=1000)

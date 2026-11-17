@@ -107,6 +107,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Product reviews: only the backend writes them (after checking the purchase)
+    // and reads them, so the author's uid never reaches the app.
+    match /reviews/{reviewId} {
+      allow read, write: if false;
+    }
+
     // Buyer-seller conversations and offers: only the backend reads and writes
     // them, so the other person's uid never reaches the app and an offer
     // cannot be accepted by the one who made it.

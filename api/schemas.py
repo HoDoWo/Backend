@@ -263,3 +263,13 @@ class ListingEstimateResponse(BaseModel):
 class ReviewRequest(BaseModel):
     rating: int = Field(ge=1, le=5)
     text: Optional[str] = Field(default=None, max_length=1000)
+
+
+# Rating of an answer from the app; anything else in the body is ignored.
+class FeedbackRequest(BaseModel):
+    model_config = {"extra": "ignore"}
+
+    rating: Optional[int] = Field(default=None, ge=1, le=5)
+    helpful: Optional[bool] = None
+    message_id: Optional[str] = Field(default=None, max_length=128)
+    comment: Optional[str] = Field(default=None, max_length=1000)

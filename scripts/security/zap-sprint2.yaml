@@ -1,0 +1,98 @@
+# OWASP ZAP Automation Framework plan for the Sprint 2 API (#159).
+#
+#   ZAP_TARGET=http://127.0.0.1:8080  ZAP_TOKEN=<JWT of test user A> \
+#     zap.sh -cmd -autorun scripts/security/zap-sprint2.yaml
+#
+# ZAP_TARGET: the local server (scripts/security/zap_local_server.py) or a Vercel
+# *preview* deployment, never production. Stripe, Firebase, OpenRouter and Kie are
+# never contacted: only ZAP_TARGET is in scope. The AI endpoints are left out of the
+# active scan (they spend credits and only forward to the AI providers).
+env:
+  contexts:
+    - name: hodowo-api
+      urls:
+        - ${ZAP_TARGET}
+      includePaths:
+        - ${ZAP_TARGET}/.*
+      excludePaths:
+        - ${ZAP_TARGET}/api/chat.*
+        - ${ZAP_TARGET}/api/panel/.*
+        - ${ZAP_TARGET}/api/marketplace/listings/(scan-label|polish|estimate)
+        - ${ZAP_TARGET}/api/appliances/environmental-tip.*
+        - .*stripe\.com.*
+        - .*googleapis\.com.*
+        - .*openrouter\.ai.*
+        - .*kie\.ai.*
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+
+jobs:
+  # Every request carries the bearer token of test user A (authenticated scan).
+  - type: replacer
+    parameters:
+      deleteAllRules: true
+    rules:
+      - description: Bearer token of test user A
+        matchType: req_header
+        matchString: Authorization
+        replacementString: Bearer ${ZAP_TOKEN}
+      # Vercel preview deployments behind Deployment Protection: the project's
+      # "Protection Bypass for Automation" secret (empty for the local server).
+      - description: Vercel protection bypass
+        matchType: req_header
+        matchString: x-vercel-protection-bypass
+        replacementString: ${ZAP_VERCEL_BYPASS}
+
+  # Every route and parameter from the FastAPI schema.
+  - type: openapi
+    parameters:
+      apiUrl: ${ZAP_TARGET}/openapi.json
+      targetUrl: ${ZAP_TARGET}
+      context: hodowo-api
+
+  # Reviewed false positive (#159): "Path Traversal" on /parts/suggest only means that
+  # error_code=suggest gives the same answer as any unknown code ({"suggested_part": null});
+  # the endpoint reads a table in memory and the catalogue, never a file.
+  - type: alertFilter
+    alertFilters:
+      - ruleId: 6
+        newRisk: False Positive
+        url: ${ZAP_TARGET}/api/marketplace/parts/suggest.*
+        urlRegex: true
+
+  - type: passiveScan-config
+    parameters:
+      maxAlertsPerRule: 10
+      scanOnlyInScope: true
+
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+
+  - type: activeScan
+    parameters:
+      context: hodowo-api
+      maxRuleDurationInMins: 3
+      maxScanDurationInMins: 30
+      threadPerHost: 4
+    policyDefinition:
+      defaultStrength: medium
+      defaultThreshold: medium
+
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+
+  - type: report
+    parameters:
+      template: traditional-html
+      reportDir: ${ZAP_REPORT_DIR}
+      reportFile: zap-sprint2-report
+      reportTitle: HoDoWo Sprint 2 API - OWASP ZAP scan
+  - type: report
+    parameters:
+      template: traditional-json
+      reportDir: ${ZAP_REPORT_DIR}
+      reportFile: zap-sprint2-report

@@ -90,7 +90,7 @@ ZAP_TOKEN=$(python3 -c "import json;print(json.load(open('scripts/security/out/t
   scripts/security/run_zap.sh
 
 # 3. The manual checks
-python scripts/security/manual_checks.py http://127.0.0.1:8080 scripts/security/out/tokens.json
+python scripts/security/manual_checks.py http://127.0.0.1:8080
 ```
 
 On a **Vercel preview** deployment (never production): set `ZAP_TARGET` to the

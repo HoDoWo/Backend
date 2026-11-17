@@ -1,8 +1,8 @@
 """Manual security checks of #159 that a scanner cannot judge: IDOR, webhook signature, limits.
 
-    python scripts/security/manual_checks.py http://127.0.0.1:8080 scripts/security/out/tokens.json
+    python scripts/security/manual_checks.py http://127.0.0.1:8080
 
-The tokens file has the JWTs of three test users, ``user-a``, ``user-b`` and ``user-c``
+The tokens are read from ``scripts/security/out/tokens.json`` (git-ignored); it has the JWTs of three test users, ``user-a``, ``user-b`` and ``user-c``
 (written by zap_local_server.py; for a preview deployment, two Firebase test
 users). User A owns ``listing-a``, ``cart-user-a`` and ``order-user-a``; user B
 tries to read and change them. Prints a Markdown table and exits with 1 when a
@@ -19,9 +19,12 @@ import sys
 import requests
 from PIL import Image
 
+# Always this file, never a path given on the command line.
+TOKENS = pathlib.Path(__file__).resolve().parent / "out" / "tokens.json"
 
-def main(base: str, tokens_path: str) -> int:
-    tokens = json.loads(pathlib.Path(tokens_path).read_text())
+
+def main(base: str) -> int:
+    tokens = json.loads(TOKENS.read_text())
     a = {"Authorization": f"Bearer {tokens['user-a']}"}
     b = {"Authorization": f"Bearer {tokens['user-b']}"}
     rows: list[tuple[str, str, bool]] = []
@@ -106,4 +109,4 @@ def main(base: str, tokens_path: str) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1], sys.argv[2]))
+    sys.exit(main(sys.argv[1]))

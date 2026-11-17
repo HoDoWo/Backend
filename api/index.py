@@ -139,10 +139,16 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/api/feedback")
-async def feedback(request: Request) -> dict[str, str]:
-    """Store or acknowledge user rating and feedback."""
-    payload = await request.json()
-    logger.info("Recorded feedback: %s", payload)
+async def feedback(payload: schemas.FeedbackRequest) -> dict[str, str]:
+    """Acknowledge a rating of an answer.
+
+    The body is validated (an invalid or oversized body is a 422, never a 500)
+    and only its shape is logged, never the user's text (#159).
+    """
+    logger.info(
+        "Recorded feedback: rating=%s helpful=%s comment_chars=%d",
+        payload.rating, payload.helpful, len(payload.comment or ""),
+    )
     return {"status": "ok"}
 
 

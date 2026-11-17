@@ -73,7 +73,7 @@ def test_ordinary_words_are_not_error_codes():
         ("the dishwasher doesn't heat the water", None, ps.HEATING_ELEMENT),
         ("the drum doesn't spin but I hear the motor", ps.WASHER, ps.DRUM_BELT),
         ("my fridge is too warm", None, ps.THERMOSTAT),
-        ("the oven light is not working", None, ps.OVEN_LAMP),
+        ("the light is out", ps.OVEN, ps.OVEN_LAMP),
     ],
 )
 def test_symptoms_point_to_their_part(text, category, component):
@@ -235,3 +235,71 @@ def test_the_endpoint_reports_an_unavailable_catalogue(monkeypatch):
     response = client.get("/api/marketplace/parts/suggest", params={"error_code": "E18", "brand": "Bosch"})
 
     assert response.status_code == 503
+
+
+# ---------- the part named by the user, in English, Italian and Spanish ----------
+
+@pytest.mark.parametrize(
+    ("text", "component"),
+    [
+        ("ciao, si è rotta la pompa della lavatrice", ps.DRAIN_PUMP),
+        ("what pump of replacement can I buy?", ps.DRAIN_PUMP),
+        ("se ha roto la bomba de la lavadora", ps.DRAIN_PUMP),
+        ("la guarnizione perde", ps.DOOR_SEAL),
+        ("I need a new heating element", ps.HEATING_ELEMENT),
+        ("la cinghia è rotta", ps.DRUM_BELT),
+    ],
+)
+def test_a_part_named_by_the_user(text, component):
+    diagnosis = ps.diagnose(text)
+
+    assert diagnosis.component == component
+    assert diagnosis.confidence == 0.85
+
+
+@pytest.mark.parametrize(
+    ("text", "component"),
+    [
+        ("la lavatrice non scarica", ps.DRAIN_PUMP),
+        ("la puerta no se abre", ps.DOOR_LOCK),
+        ("il frigo non raffredda", ps.THERMOSTAT),
+    ],
+)
+def test_italian_and_spanish_symptoms(text, component):
+    assert ps.diagnose(text).component == component
+
+
+def test_a_named_part_of_another_brand_is_offered_as_may_not_fit():
+    part = ps.suggest("è rotta la pompa della lavatrice", brand="Edesa", model="Aclass", parts_for=parts_for)
+
+    assert part["name"].startswith("Drain pump")
+    assert part["category"] == "washing machine"
+    assert part["compatible"] is False
+    assert part["confidence"] == 0.75
+
+
+def test_another_brand_without_the_model_does_not_fit_either():
+    part = ps.suggest("the washing machine pump is broken", brand="Edesa", parts_for=parts_for)
+
+    assert part["compatible"] is False
+
+
+def test_without_the_appliance_type_the_most_usual_one_first():
+    assert ps.suggest("the pump is broken", parts_for=parts_for)["category"] == "washing machine"
+
+
+def test_the_chat_gives_the_appliance_and_the_brand_of_a_follow_up_question(monkeypatch):
+    monkeypatch.setattr(ps, "_catalogue_parts", parts_for)
+    answer = {"reply": "You need the model code", "is_manual": True, "appliance_name": "Household Appliance",
+              "issue_title": "what pump of replacement i can buy?", "brand": None, "model": None}
+    history = "è rotta la pompa della mia lavatrice Samsung\nEcco come controllare il filtro"
+
+    part = ps.attach_to_response(answer, "what pump of replacement i can buy?", history)["suggested_part"]
+
+    assert part["id"] == "HDW-P-010"
+    assert part["compatible"] is None
+
+
+def test_brands_are_found_as_whole_words():
+    assert ps.brand_in("my LG fridge") == "lg"
+    assert ps.brand_in("a long message") is None

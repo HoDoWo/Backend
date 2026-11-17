@@ -81,6 +81,9 @@ def format_chat_response(
         "reply": reply,
         "is_manual": True,
         "appliance_name": appliance_name,
+        # The appliance found by the agent, for the spare part suggestion (#30).
+        "brand": str((appliance_info or {}).get("brand") or "").strip() or None,
+        "model": str((appliance_info or {}).get("model") or "").strip() or None,
         "issue_title": format_issue_title(message, appliance_name),
         "overview": str((manual_info or {}).get("summary") or guide_overview(reply)),
         "steps": steps,

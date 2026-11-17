@@ -7,6 +7,7 @@ from typing import Literal
 import auth
 import firebase_store
 import listing_images
+import part_suggestions
 import request_helpers
 import schemas
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -43,6 +44,27 @@ async def search_marketplace(
     except (firebase_store.FirebaseConfigurationError, RuntimeError) as exc:
         raise HTTPException(status_code=503, detail="marketplace persistence is unavailable") from exc
     return schemas.MarketplaceSearchResponse(**result)
+
+
+@marketplace_router.get("/parts/suggest")
+async def suggest_part(
+    error_code: str | None = Query(default=None, max_length=20),
+    symptom: str | None = Query(default=None, max_length=300),
+    brand: str | None = Query(default=None, max_length=80),
+    model: str | None = Query(default=None, max_length=80),
+    category: str | None = Query(default=None, max_length=80),
+) -> dict:
+    """The spare part an error code or a symptom points to (#30); ``null`` when none is sure enough."""
+    if not (error_code or "").strip() and not (symptom or "").strip():
+        raise HTTPException(status_code=422, detail="error_code or symptom is required")
+    try:
+        part = part_suggestions.suggest(
+            text=symptom or "", brand=brand, model=model, category=category,
+            error_code=(error_code or "").strip() or None,
+        )
+    except (firebase_store.FirebaseConfigurationError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail="marketplace persistence is unavailable") from exc
+    return {"suggested_part": part}
 
 
 @marketplace_router.post(

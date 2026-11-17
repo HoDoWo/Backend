@@ -32,6 +32,7 @@ from endpoints import (  # noqa: E402
     marketplace,
     notifications,
     rating,
+    reviews,
 )
 from fastapi import FastAPI, HTTPException, Request, responses  # noqa: E402
 from fastapi.middleware import cors  # noqa: E402
@@ -58,6 +59,7 @@ app.include_router(listings.listings_router)
 app.include_router(listing_ai.listing_ai_router)
 app.include_router(conversations.conversations_router)
 app.include_router(notifications.notifications_router)
+app.include_router(reviews.reviews_router)
 
 
 

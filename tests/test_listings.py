@@ -129,6 +129,36 @@ def test_a_sold_listing_cannot_be_edited(store):
     assert owner.patch(f"{API}/sold-tv", json={"price": 1}).status_code == 409
 
 
+# ---------- relist ----------
+
+def test_the_owner_puts_a_sold_listing_back_on_sale_with_edits(store):
+    store.listings["sold-tv"].update(quantity=0, sold_at=NOW - 1000)
+
+    response = owner.post(f"{API}/sold-tv/relist", json={"price": 150, "quantity": 2})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "active" and body["sold_at"] is None and body["price"] == 150.0
+    saved = store.listings["sold-tv"]
+    assert saved["status"] == "active" and saved["quantity"] == 2 and saved["price_cents"] == 15000
+    assert "sold-tv" in [r["id"] for r in other.get(API).json()["results"]]
+
+
+def test_relisting_without_edits_offers_one_again(store):
+    store.listings["sold-tv"]["quantity"] = 0
+
+    assert owner.post(f"{API}/sold-tv/relist", json={}).json()["status"] == "active"
+    assert store.listings["sold-tv"]["quantity"] == 1
+
+
+def test_only_the_owner_relists_and_only_a_sold_listing(store):
+    assert other.post(f"{API}/sold-tv/relist", json={}).status_code == 403
+    assert owner.post(f"{API}/washer/relist", json={}).status_code == 409
+    assert owner.post(f"{API}/missing/relist", json={}).status_code == 404
+    assert owner.post(f"{API}/sold-tv/relist", json={"description": "short"}).status_code == 422
+    assert store.listings["sold-tv"]["status"] == "sold"
+
+
 @pytest.mark.parametrize(
     "change, field",
     [

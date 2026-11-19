@@ -367,6 +367,19 @@ def _apply_payment_event(event: dict[str, Any], new_status: str) -> None:
     _mark_paid(orders, now_ms())
 
 
+# A sale is notified to the seller for a week after it was paid.
+SALE_NOTIFICATION_MS = 7 * 24 * 60 * 60 * 1000
+
+
+def list_recent_sales(uid: str, now: int) -> list[dict[str, Any]]:
+    """Paid orders of the last week in which [uid] is the seller (their second-hand listings)."""
+    since = now - SALE_NOTIFICATION_MS
+    return [
+        order for order in get_store().list_seller_orders(uid, ORDER_HISTORY_LIMIT)
+        if order.get("status") == "paid" and (order.get("paid_at") or 0) >= since
+    ]
+
+
 def list_orders(uid: str) -> list[dict[str, Any]]:
     return [public_order(order) for order in get_store().list_user_orders(uid, ORDER_HISTORY_LIMIT)]
 

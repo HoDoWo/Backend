@@ -9,6 +9,7 @@ app's "My listings" screen (app #146) calls.
 * Only the owner reads a sold listing, edits a listing or marks it as sold:
   anyone else gets 403 (404 when the listing does not exist).
 * A sold listing cannot be edited any more: the buyer saw that version.
+  The owner can put it back on sale instead (relist), with the same edits.
 * Responses never contain ``owner_uid``: only ``is_mine``.
 """
 
@@ -201,6 +202,34 @@ def update_listing(uid: str, listing_id: str, changes: dict[str, Any]) -> dict[s
     if not changes:
         raise ListingError(422, "nothing to change")
 
+    fields = _edited_fields(changes)
+    fields["updated_at"] = checkout_service.now_ms()
+
+    get_store().update_listing(listing_id, fields)
+    return public({**listing, **fields}, uid)
+
+
+def relist(uid: str, listing_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+    """Puts a sold listing back on sale, with the owner's edits (none is fine).
+
+    The quantity becomes 1 unless the edits say otherwise; orders keep their own
+    copy of what was bought, so editing the listing now does not change them.
+    """
+    listing = _own_listing(uid, listing_id)
+    if listing.get("status") != SOLD:
+        raise ListingError(409, "only a sold listing can be put back on sale")
+
+    changes = {key: value for key, value in changes.items() if key in EDITABLE_FIELDS}
+    fields = _edited_fields(changes)
+    fields.setdefault("quantity", 1)
+    fields.update(status=ACTIVE, sold_at=None, updated_at=checkout_service.now_ms())
+
+    get_store().update_listing(listing_id, fields)
+    return public({**listing, **fields}, uid)
+
+
+def _edited_fields(changes: dict[str, Any]) -> dict[str, Any]:
+    """The stored fields for the owner's edits, validated."""
     fields: dict[str, Any] = {}
     for key, value in changes.items():
         if key == "price":
@@ -221,10 +250,7 @@ def update_listing(uid: str, listing_id: str, changes: dict[str, Any]) -> dict[s
         fields["title_normalised"] = firebase_store._title_key(fields["title"])
     if "description" in fields and len(fields["description"]) < 30:
         raise field_error("description", "the description must be at least 30 characters")
-    fields["updated_at"] = checkout_service.now_ms()
-
-    get_store().update_listing(listing_id, fields)
-    return public({**listing, **fields}, uid)
+    return fields
 
 
 def mark_sold(uid: str, listing_id: str) -> dict[str, Any]:

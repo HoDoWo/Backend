@@ -1,4 +1,4 @@
-"""Second-hand listing endpoints (#35): browse, read, edit, mark as sold.
+"""Second-hand listing endpoints (#35): browse, read, edit, mark as sold, relist.
 
 ``POST`` (create) and ``DELETE`` stay in ``endpoints/marketplace.py``. Every
 route needs a signed-in user; changes are for the listing's owner only.
@@ -67,3 +67,12 @@ async def update_listing(
 async def mark_sold(request: fastapi.Request, listing_id: ListingId) -> dict[str, Any]:
     """Owner only; repeating it is harmless."""
     return _run(listings_service.mark_sold, checkout._uid(request), listing_id)
+
+
+@listings_router.post("/{listing_id}/relist", response_model=dict)
+async def relist(
+    request: fastapi.Request, req: schemas.MarketplaceListingUpdateRequest, listing_id: ListingId
+) -> dict[str, Any]:
+    """Owner only: puts a sold listing back on sale with the edits in the body (409 if not sold)."""
+    return _run(listings_service.relist, checkout._uid(request), listing_id,
+                req.model_dump(exclude_unset=True))

@@ -20,6 +20,7 @@ from typing import Any
 import checkout_service
 import firebase_store
 import listings_store
+import user_names
 
 ACTIVE = "active"
 SOLD = "sold"
@@ -117,7 +118,9 @@ def public(listing: dict[str, Any], uid: str, now: int | None = None) -> dict[st
         "pickup_zip": listing.get("pickup_zip"),
         "location": listing.get("location") or listing.get("pickup_zip"),
         "shipping_price_cents": listing.get("shipping_price_cents"),
-        "seller_name": listing.get("seller_name") or "Community seller",
+        "seller_name": user_names.resolve(
+            listing.get("seller_name"), listing.get("owner_uid"), user_names.COMMUNITY_SELLER
+        ),
         "status": listing.get("status") or ACTIVE,
         "created_at": listing.get("created_at"),
         "updated_at": listing.get("updated_at"),

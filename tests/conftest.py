@@ -51,3 +51,14 @@ def conversations(monkeypatch):
     fake = FakeConversationStore()
     monkeypatch.setattr(conversations_service, "get_store", lambda: fake)
     return fake
+
+
+@pytest.fixture(autouse=True)
+def user_profiles(monkeypatch):
+    """No real Firestore/Auth for user names: tests add names to this dict."""
+    import user_names
+
+    names: dict[str, str] = {}
+    user_names._cache.clear()
+    monkeypatch.setattr(user_names, "_fetch", lambda uid: names.get(uid))
+    return names

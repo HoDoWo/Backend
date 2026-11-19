@@ -18,6 +18,7 @@ import datetime as dt
 from typing import Any
 
 import marketplace_store
+import user_names
 
 STANDARD = "standard"
 EXPRESS = "express"
@@ -48,7 +49,7 @@ def seller_kind(product_type: str) -> str:
 
 def seller_name(product_type: str, item: dict[str, Any]) -> str:
     if product_type == "used":
-        return str(item.get("seller_name") or "Community seller")
+        return user_names.resolve(item.get("seller_name"), item.get("owner_uid"), user_names.COMMUNITY_SELLER)
     if item.get("seller_id") == marketplace_store.PLATFORM_SELLER_ID:
         return "HoDoWo"
     return str(item.get("partner_name") or item.get("seller_id") or "Official partner")

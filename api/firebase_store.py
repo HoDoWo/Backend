@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import firebase_admin
+import user_names
 from firebase_admin import credentials, firestore, storage
 from google.cloud.firestore_v1 import base_query
 
@@ -181,7 +182,11 @@ def _marketplace_item(snapshot) -> dict[str, Any]:
         "part_number": data.get("part_number") or data.get("sku"),
         "listing_kind": data.get("listing_kind") or data.get("item_type") or "part",
         "image_urls": list(images or []),
-        "seller_name": data.get("seller_name") or data.get("partner_name") or "Community seller",
+        "seller_name": (
+            data.get("seller_name") or data.get("partner_name") or "Official partner"
+            if (data.get("type") or "used") == "new"
+            else user_names.resolve(data.get("seller_name"), data.get("owner_uid"), user_names.COMMUNITY_SELLER)
+        ),
         "partner_name": data.get("partner_name"),
         "type": data.get("type") or "used",
         "status": data.get("status") or "active",

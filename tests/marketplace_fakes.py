@@ -74,6 +74,10 @@ class FakeStore:
         orders = [copy.deepcopy(o) for o in self.orders.values() if o["uid"] == uid]
         return sorted(orders, key=lambda o: o["created_at"], reverse=True)[:limit]
 
+    def list_seller_orders(self, seller_id, limit):
+        orders = [copy.deepcopy(o) for o in self.orders.values() if o.get("seller_id") == seller_id]
+        return sorted(orders, key=lambda o: o["created_at"], reverse=True)[:limit]
+
     # webhook idempotency
     def claim_event(self, event_id, event_type, created_at):
         if event_id in self.events:

@@ -159,3 +159,54 @@ def test_a_stranger_sees_nothing(market, monkeypatch):
     stranger = TestClient(app, headers=bearer(make_token(sub="someone-3")))
 
     assert stranger.get(NOTIFICATIONS).json()["items"] == []
+
+
+def _sales_store(monkeypatch, *orders):
+    from marketplace_fakes import FakeStore
+
+    fake = FakeStore()
+    for order in orders:
+        fake.save_order(order["order_id"], order)
+    monkeypatch.setattr(checkout_service, "get_store", lambda: fake)
+
+
+def _order(order_id, *, status="paid", paid_at, seller_id="seller-uid", titles=("Old fridge",), method="pickup"):
+    return {
+        "order_id": order_id, "checkout_id": "co-1", "uid": "buyer-uid", "seller_id": seller_id,
+        "items": [{"title": title} for title in titles], "total_cents": 12000, "shipping_method": method,
+        "status": status, "created_at": paid_at, "paid_at": paid_at,
+    }
+
+
+def test_the_seller_is_told_when_a_listing_is_sold(monkeypatch, clock):
+    _no_cart(monkeypatch)
+    _no_sponsored(monkeypatch)
+    now = checkout_service.now_ms()
+    _sales_store(monkeypatch, _order("o1", paid_at=now - 1000))
+    monkeypatch.setattr(conversations_service, "list_conversations", lambda uid: {"results": []})
+
+    items = notifications_service.list_notifications({"uid": "seller-uid"})["items"]
+
+    assert items == [{
+        "id": "sale:o1", "kind": "sale", "title": "Sold: Old fridge",
+        "body": "Paid €120.00, the buyer picks it up", "image_url": None,
+        "created_at": now - 1000, "unread": True, "target": {"type": "my_listings"},
+    }]
+
+
+def test_only_paid_sales_of_the_last_week_of_this_seller_are_notified(monkeypatch, clock):
+    now = checkout_service.now_ms()
+    week = checkout_service.SALE_NOTIFICATION_MS
+    _sales_store(
+        monkeypatch,
+        _order("recent", paid_at=now - week + 1, titles=("Pump", "Belt", "Seal"), method="standard"),
+        _order("old", paid_at=now - week - 1),
+        _order("pending", status="pending", paid_at=now),
+        _order("other", seller_id="someone-else", paid_at=now),
+    )
+
+    items = notifications_service._sales("seller-uid", now)
+
+    assert [item["id"] for item in items] == ["sale:recent"]
+    assert items[0]["title"] == "Sold: Pump and 2 more"
+    assert items[0]["body"] == "Paid €120.00, to ship"

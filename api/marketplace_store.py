@@ -95,6 +95,15 @@ def list_user_orders(uid: str, limit: int) -> list[dict[str, Any]]:
     return orders[:limit]
 
 
+def list_seller_orders(seller_id: str, limit: int) -> list[dict[str, Any]]:
+    """Orders where [seller_id] sells (a user's listings), newest first."""
+    # One equality filter: no composite index; sorted in memory like the buyer's orders.
+    query = _db().collection("orders").where("seller_id", "==", seller_id)
+    orders = [{"order_id": doc.id, **doc.to_dict()} for doc in query.stream()]
+    orders.sort(key=lambda order: order.get("created_at") or 0, reverse=True)
+    return orders[:limit]
+
+
 def claim_event(event_id: str, event_type: str, created_at: int) -> bool:
     """Record a Stripe event; False when it was already processed.
 

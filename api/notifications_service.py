@@ -8,6 +8,7 @@ Nothing is stored: every call reads what changed for the user.
 * ``offer_accepted`` / ``offer_declined``: the other person answered the user's offer;
 * ``price_drop`` / ``price_change``: a product in the user's cart now costs
   something different from when it was added;
+* ``sale``: a second-hand listing of the user was bought and paid (for a week);
 * ``sponsored``: one product of a sponsored partner, a different one each day.
 
 Each source is read on its own: if one fails (no cart yet, Stripe or the
@@ -23,6 +24,7 @@ from typing import Any
 import cart_service
 import checkout_service
 import conversations_service
+import fulfilment
 import logging_config
 import partner_products
 
@@ -100,6 +102,26 @@ def _price_changes(uid: str, now: int) -> list[dict[str, Any]]:
     return items
 
 
+def _sales(uid: str, now: int) -> list[dict[str, Any]]:
+    items = []
+    for order in checkout_service.list_recent_sales(uid, now):
+        titles = [item.get("title") or "your item" for item in order.get("items") or []] or ["your item"]
+        what = titles[0] if len(titles) == 1 else f"{titles[0]} and {len(titles) - 1} more"
+        how = (", the buyer picks it up" if order.get("shipping_method") == fulfilment.PICKUP
+               else ", to ship" if order.get("shipping_method") else "")
+        items.append({
+            "id": f"sale:{order['order_id']}",
+            "kind": "sale",
+            "title": f"Sold: {_short(what)}",
+            "body": f"Paid {_euros(order.get('total_cents'))}{how}",
+            "image_url": None,
+            "created_at": order.get("paid_at"),
+            "unread": True,
+            "target": {"type": "my_listings"},
+        })
+    return items
+
+
 def _sponsored(user: dict[str, Any], now: int) -> list[dict[str, Any]]:
     products = [
         product for product in partner_products.list_products(user, limit=partner_products.MAX_PAGE)["items"]
@@ -134,7 +156,8 @@ def list_notifications(user: dict[str, Any]) -> dict[str, Any]:
     """The user's notifications, newest first, with the sponsored product last."""
     uid = user["uid"]
     now = checkout_service.now_ms()
-    items = _safely("conversations", _conversations, uid) + _safely("cart", _price_changes, uid, now)
+    items = (_safely("conversations", _conversations, uid) + _safely("cart", _price_changes, uid, now)
+             + _safely("sales", _sales, uid, now))
     items.sort(key=lambda item: -(item.get("created_at") or 0))
     items += _safely("sponsored products", _sponsored, user, now)
     return {"items": items, "unread": sum(1 for item in items if item["unread"])}

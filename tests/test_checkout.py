@@ -285,3 +285,15 @@ def test_another_users_order_is_forbidden(store, gateway, stripe_off):
 
     assert client.get("/api/marketplace/orders/other").status_code == 403
     assert client.get("/api/marketplace/orders/missing").status_code == 404
+
+
+def test_the_order_keeps_the_photo_of_each_item_for_the_history(store, gateway, stripe_off):
+    store.items[("part", "pump-1")]["image_url"] = "https://example.test/pump.webp"
+    store.items[("part", "pump-1")]["image_urls"] = None
+
+    client.post("/api/marketplace/checkout")
+    items = [item for order in client.get("/api/marketplace/orders").json()["orders"] for item in order["items"]]
+
+    pump = next(item for item in items if item["product_id"] == "pump-1")
+    assert pump["image_url"] == "https://example.test/pump.webp"
+    assert all("image_url" in item for item in items)

@@ -46,6 +46,15 @@ async def search_marketplace(
     return schemas.MarketplaceSearchResponse(**result)
 
 
+@marketplace_router.get("/search/filters", response_model=dict)
+async def search_filters() -> dict[str, list[str]]:
+    """Categories and brands on sale now, for the filter sheet of the search (#139)."""
+    try:
+        return firebase_store.search_filters()
+    except (firebase_store.FirebaseConfigurationError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail="marketplace persistence is unavailable") from exc
+
+
 @marketplace_router.get("/parts/suggest")
 async def suggest_part(
     error_code: str | None = Query(default=None, max_length=20),

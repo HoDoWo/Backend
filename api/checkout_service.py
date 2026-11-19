@@ -116,6 +116,14 @@ def unit_price(uid: str, product_type: str, product_id: str, item: dict[str, Any
     return price, None
 
 
+def _first_image(item: dict[str, Any]) -> str | None:
+    images = item.get("image_urls")
+    if isinstance(images, list) and images and isinstance(images[0], str):
+        return images[0]
+    image = item.get("image_url")
+    return image if isinstance(image, str) and image else None
+
+
 def _priced_lines(uid: str, cart_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Resolve every cart line against the catalogue, or refuse the checkout."""
     store = get_store()
@@ -148,6 +156,8 @@ def _priced_lines(uid: str, cart_items: list[dict[str, Any]]) -> list[dict[str, 
                 "product_type": product_type,
                 "product_id": product_id,
                 "title": str(item.get("title") or ""),
+                # Kept in the order so the confirmation and the history show it (#144).
+                "image_url": _first_image(item),
                 "quantity": quantity,
                 "unit_price_cents": price,
                 "price_cents": price * quantity,
@@ -179,7 +189,8 @@ def _build_orders(uid: str, checkout_id: str, lines: list[dict[str, Any]], curre
                 "seller_id": seller_id,
                 "items": [
                     {key: line[key] for key in (
-                        "product_type", "product_id", "title", "quantity", "unit_price_cents", "price_cents", "offer_id",
+                        "product_type", "product_id", "title", "image_url", "quantity", "unit_price_cents",
+                        "price_cents", "offer_id",
                     )}
                     for line in seller_lines
                 ],

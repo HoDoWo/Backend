@@ -392,7 +392,27 @@ def list_recent_sales(uid: str, now: int) -> list[dict[str, Any]]:
 
 
 def list_orders(uid: str) -> list[dict[str, Any]]:
-    return [public_order(order) for order in get_store().list_user_orders(uid, ORDER_HISTORY_LIMIT)]
+    orders = [public_order(order) for order in get_store().list_user_orders(uid, ORDER_HISTORY_LIMIT)]
+    _add_missing_images(orders)
+    return orders
+
+
+def _add_missing_images(orders: list[dict[str, Any]]) -> None:
+    """Orders placed before the photo was kept show the product's current one (#144)."""
+    store = get_store()
+    found: dict[tuple[str, str], str | None] = {}
+    for order in orders:
+        for item in order.get("items") or []:
+            if item.get("image_url"):
+                continue
+            key = (str(item.get("product_type") or ""), str(item.get("product_id") or ""))
+            if key not in found:
+                try:
+                    product = store.get_item(*key) if key[0] in marketplace_store.PRODUCT_SOURCES and key[1] else None
+                except Exception:  # noqa: BLE001 - a missing photo must never hide the history
+                    product = None
+                found[key] = _first_image(product) if product else None
+            item["image_url"] = found[key]
 
 
 def get_order(uid: str, order_id: str) -> dict[str, Any]:
@@ -401,4 +421,6 @@ def get_order(uid: str, order_id: str) -> dict[str, Any]:
         raise CheckoutError(404, "order not found")
     if order.get("uid") != uid:
         raise CheckoutError(403, "this order belongs to another user")
-    return public_order(order)
+    result = public_order(order)
+    _add_missing_images([result])
+    return result

@@ -10,6 +10,7 @@ import listing_images
 import part_suggestions
 import request_helpers
 import schemas
+import user_names
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 marketplace_router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
@@ -90,8 +91,8 @@ async def create_listing(payload: schemas.MarketplaceListingRequest, request: Re
         return firebase_store.create_marketplace_listing(
             uid,
             payload.model_dump(mode="json"),
-            # The email is never shown to other users.
-            seller_name=str(user.get("name") or "").strip()[:80] or "Community seller",
+            # The profile name; the email is never shown to other users.
+            seller_name=user_names.of_user(user) or user_names.COMMUNITY_SELLER,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

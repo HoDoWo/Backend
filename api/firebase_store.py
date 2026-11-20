@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import firebase_admin
+import user_names
 from firebase_admin import credentials, firestore, storage
 from google.cloud.firestore_v1 import base_query
 
@@ -182,7 +183,9 @@ def _marketplace_item(snapshot) -> dict[str, Any]:
         "part_number": data.get("part_number") or data.get("sku"),
         "listing_kind": data.get("listing_kind") or data.get("item_type") or "part",
         "image_urls": list(images or []),
-        "seller_name": data.get("seller_name") or data.get("partner_name") or "Community seller",
+        # A user listing's placeholder is replaced by the owner's name in search_marketplace,
+        # which knows the collection (the stored "type" is not reliable for that).
+        "seller_name": data.get("seller_name") or data.get("partner_name") or user_names.COMMUNITY_SELLER,
         "partner_name": data.get("partner_name"),
         "type": data.get("type") or "used",
         "status": data.get("status") or "active",
@@ -470,6 +473,15 @@ def search_marketplace(
     start = keys.index(cursor) + 1 if cursor in keys else 0
     page = items[start : start + limit]
     next_cursor = keys[start + limit - 1] if len(page) == limit and start + limit < len(items) else None
+    # Names of the community sellers on this page: one batch, not one call per listing.
+    listings_on_page = [item for item in page if item["type"] == "used"]
+    user_names.prefetch(
+        item.get("owner_uid") for item in listings_on_page if user_names.is_placeholder(item.get("seller_name"))
+    )
+    for item in listings_on_page:
+        item["seller_name"] = user_names.resolve(
+            item.get("seller_name"), item.get("owner_uid"), user_names.COMMUNITY_SELLER
+        )
     for item in page:
         item.pop("_relevance", None)
         item.pop("_partner_weight", None)

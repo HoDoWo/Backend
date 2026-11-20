@@ -25,6 +25,7 @@ import checkout_service
 import conversations_store
 import forum_service
 import listings_store
+import user_names
 
 BUYER = "buyer"
 SELLER = "seller"
@@ -170,7 +171,10 @@ def _public(conversation: dict[str, Any], role: str, now: int,
     return {
         "id": conversation["id"],
         "role": "buying" if role == BUYER else "selling",
-        "other_name": conversation.get(f"{_other(role)}_name") or "HoDoWo user",
+        "other_name": user_names.resolve(
+            conversation.get(f"{_other(role)}_name"), conversation.get(f"{_other(role)}_uid"),
+            user_names.HODOWO_USER,
+        ),
         "listing": {
             "id": conversation.get("listing_id"),
             "title": conversation.get("listing_title") or "",
@@ -196,7 +200,14 @@ def list_conversations(uid: str) -> dict[str, Any]:
     """The user's inbox, most recent activity first."""
     now = _now()
     rows = []
-    for conversation in get_store().list_for_user(uid):
+    conversations = get_store().list_for_user(uid)
+    # The other side's names in one batch, not one call per conversation.
+    user_names.prefetch(
+        conversation.get(f"{_other(_role(conversation, uid))}_uid")
+        for conversation in conversations
+        if user_names.is_placeholder(conversation.get(f"{_other(_role(conversation, uid))}_name"))
+    )
+    for conversation in conversations:
         role = _role(conversation, uid)
         rows.append(_public(conversation, role, now))
     rows.sort(key=lambda row: (-(row["updated_at"] or 0), row["id"]))
@@ -270,9 +281,11 @@ def start_conversation(user: dict[str, Any], listing_id: str, text: str | None =
         "listing_image_url": _image(listing),
         "listing_price_cents": int(listing.get("price_cents") or 0),
         "buyer_uid": uid,
-        "buyer_name": forum_service.author_name(user),
+        "buyer_name": user_names.of_user(user) or user_names.HODOWO_USER,
         "seller_uid": listing.get("owner_uid"),
-        "seller_name": str(listing.get("seller_name") or "Community seller"),
+        "seller_name": user_names.resolve(
+            listing.get("seller_name"), listing.get("owner_uid"), user_names.COMMUNITY_SELLER
+        ),
         "unread_buyer": 0,
         "unread_seller": 0,
         "offers_made": 0,

@@ -51,3 +51,27 @@ def conversations(monkeypatch):
     fake = FakeConversationStore()
     monkeypatch.setattr(conversations_service, "get_store", lambda: fake)
     return fake
+
+
+class _Profiles(dict):
+    """Profile names by uid; ``calls`` records every batch the names module asked for."""
+
+    def __init__(self):
+        super().__init__()
+        self.calls: list[list[str]] = []
+
+
+@pytest.fixture(autouse=True)
+def user_profiles(monkeypatch):
+    """No real Firestore/Auth for user names: tests add names to this dict."""
+    import user_names
+
+    names = _Profiles()
+    user_names._cache.clear()
+
+    def fetch_many(uids):
+        names.calls.append(list(uids))
+        return {uid: names.get(uid) for uid in uids}
+
+    monkeypatch.setattr(user_names, "_fetch_many", fetch_many)
+    return names

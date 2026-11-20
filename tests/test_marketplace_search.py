@@ -200,3 +200,52 @@ def test_search_results_never_contain_the_owner_uid(db):
     items = firebase_store.search_marketplace("", "used", None, None, None, None, None, 20)["items"]
 
     assert items and all("owner_uid" not in item for item in items)
+
+
+# ---------- filters of the search screen (#139) ----------
+
+@pytest.fixture
+def facets(db):
+    firebase_store._search_filters_cache.clear()
+    db.colls["listings"].docs.update({
+        "washer": {"title": "Washer", "category": "washing-machine", "brand": "Bosch", "condition": "like-new",
+                   "status": "active", "price_cents": 9000, "created_at": 4},
+        "dryer": {"title": "Dryer", "category": "dryer", "brand": "bosch", "condition": "used-good",
+                  "status": "active", "price_cents": 8000, "created_at": 4},
+    })
+    db.colls["parts"].docs["belt-1"].update(category="washing machine", brand="Samsung")
+    db.colls["parts"].docs["pump-1"].update(category="oven", brand="Hidden")  # out of stock
+    yield db
+    firebase_store._search_filters_cache.clear()
+
+
+def test_the_filter_sheet_offers_only_categories_and_brands_on_sale(facets):
+    filters = firebase_store.search_filters()
+
+    assert filters["categories"] == ["dryer", "washing machine"]
+    assert filters["brands"] == ["Bosch", "Samsung"]
+
+
+def test_a_category_matches_with_dashes_or_spaces_and_a_brand_in_any_case(facets):
+    assert set(ids(search(category="washing machine"))) == {"washer", "belt-1"}
+    assert set(ids(search(category="washing-machine"))) == {"washer", "belt-1"}
+    assert set(ids(search(brand="BOSCH"))) == {"washer", "dryer"}
+
+
+def test_one_second_hand_condition_can_be_asked_for(facets):
+    assert ids(search(item_type="used", condition="like-new")) == ["washer"]
+    assert set(ids(search(item_type="used", condition="used"))) >= {"washer", "dryer"}
+
+
+def test_the_filters_endpoint(facets):
+    response = TestClient(app, headers=bearer(make_token(sub="u1"))).get("/api/marketplace/search/filters")
+
+    assert response.status_code == 200
+    assert response.json()["brands"] == ["Bosch", "Samsung"]
+
+
+def test_a_partner_product_is_an_appliance_and_a_catalogue_part_a_part(db):
+    kinds = {item["id"]: item["listing_kind"] for item in search()["items"]}
+
+    assert kinds["oven-1"] == "appliance" and kinds["belt-1"] == "part" and kinds["old-pump"] == "part"
+    assert "oven-1" in ids(search(item_type="appliance")) and "oven-1" not in ids(search(item_type="part"))

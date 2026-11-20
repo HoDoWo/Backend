@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -328,6 +329,58 @@ def delete_marketplace_listing(user_uid: str, listing_id: str) -> bool:
     return True
 
 
+# Second-hand conditions a listing can have; the search can ask for one of them (#139).
+USED_CONDITIONS = ("like-new", "used-good", "parts-only", "refurbished")
+SEARCH_FILTERS_CACHE_SECONDS = 300
+_search_filters_cache: dict[str, Any] = {}
+
+
+def _facet_key(value: Any) -> str:
+    return " ".join(str(value or "").lower().replace("-", " ").replace("_", " ").split())
+
+
+def search_filters() -> dict[str, list[str]]:
+    """Categories and brands of what is on sale now, for the search filter sheet (#139).
+
+    Only values that would return something are offered. Cached for a few minutes:
+    reading the three collections on every sheet opening would be wasteful.
+    """
+    cached = _search_filters_cache.get("value")
+    if cached and time.monotonic() - _search_filters_cache["at"] < SEARCH_FILTERS_CACHE_SECONDS:
+        return cached
+    client = get_firestore_client()
+    categories: dict[str, str] = {}
+    brands: dict[str, str] = {}
+    for collection_name in ("listings", "partner_products", "parts"):
+        for snapshot in client.collection(collection_name).stream():
+            item = _marketplace_item(snapshot)
+            if not _in_stock(collection_name, item):
+                continue
+            category, brand = _facet_key(item.get("category")), " ".join(str(item.get("brand") or "").split())
+            if category and category != "other":
+                categories.setdefault(category, category)
+            if brand:
+                brands.setdefault(brand.lower(), brand)
+    value = {
+        "categories": sorted(categories.values()),
+        "brands": sorted(brands.values(), key=str.lower),
+    }
+    _search_filters_cache.update(value=value, at=time.monotonic())
+    return value
+
+
+def _listing_kind(collection_name: str, snapshot, item: dict[str, Any]) -> str:
+    """"part" or "appliance": a catalogue part is a part, a partner product an appliance
+    unless its document says otherwise, a user listing what its owner chose."""
+    if collection_name == "parts":
+        return "part"
+    data = snapshot.to_dict() or {}
+    stored = data.get("listing_kind") or data.get("item_type")
+    if collection_name == "partner_products":
+        return stored or "appliance"
+    return item.get("listing_kind") or "part"
+
+
 def search_marketplace(
     query: str,
     item_type: str,
@@ -362,6 +415,7 @@ def search_marketplace(
             if not _in_stock(collection_name, item):
                 continue
             item["type"] = source_type
+            item["listing_kind"] = _listing_kind(collection_name, snapshot, item)
             if item_type == "part":
                 if item.get("listing_kind") != "part" and item["type"] != "part":
                     continue
@@ -373,7 +427,11 @@ def search_marketplace(
             if condition:
                 c_low = condition.lower().strip()
                 item_cond = str(item.get("condition", "")).lower()
-                if c_low in ("new", "brand-new", "brand new", "unopened"):
+                if c_low in USED_CONDITIONS:
+                    # One exact second-hand condition (#139): "like-new", "used-good"...
+                    if item_cond.replace(" ", "-") != c_low:
+                        continue
+                elif c_low in ("new", "brand-new", "brand new", "unopened"):
                     if item_cond not in ("new", "unopened", "brand-new", "brand new"):
                         continue
                 elif c_low in ("used", "second-hand", "second hand", "refurbished", "pre-owned"):
@@ -387,9 +445,10 @@ def search_marketplace(
             )
             if needle and needle not in haystack:
                 continue
-            if category and str(item.get("category", "")).lower() != category.lower():
+            # "washing-machine" (sell form) and "washing machine" (catalogue) are one category.
+            if category and _facet_key(item.get("category")) != _facet_key(category):
                 continue
-            if brand and str(item.get("brand", "")).lower() != brand.lower():
+            if brand and _facet_key(item.get("brand")) != _facet_key(brand):
                 continue
             price = float(item.get("price", 0))
             if min_price is not None and price < min_price:

@@ -200,7 +200,14 @@ def list_conversations(uid: str) -> dict[str, Any]:
     """The user's inbox, most recent activity first."""
     now = _now()
     rows = []
-    for conversation in get_store().list_for_user(uid):
+    conversations = get_store().list_for_user(uid)
+    # The other side's names in one batch, not one call per conversation.
+    user_names.prefetch(
+        conversation.get(f"{_other(_role(conversation, uid))}_uid")
+        for conversation in conversations
+        if user_names.is_placeholder(conversation.get(f"{_other(_role(conversation, uid))}_name"))
+    )
+    for conversation in conversations:
         role = _role(conversation, uid)
         rows.append(_public(conversation, role, now))
     rows.sort(key=lambda row: (-(row["updated_at"] or 0), row["id"]))

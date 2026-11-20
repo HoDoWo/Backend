@@ -171,6 +171,9 @@ def list_listings(uid: str, q: str = "", category: str | None = None, max_price:
     page = result[start:start + min(max(limit, 1), MAX_PAGE)]
     more = start + len(page) < len(result)
     now = checkout_service.now_ms()
+    user_names.prefetch(
+        listing.get("owner_uid") for listing in page if user_names.is_placeholder(listing.get("seller_name"))
+    )
     return {
         "results": [public(listing, uid, now) for listing in page],
         "next_cursor": page[-1]["id"] if more and page else None,

@@ -116,6 +116,14 @@ def unit_price(uid: str, product_type: str, product_id: str, item: dict[str, Any
     return price, None
 
 
+def _first_image(item: dict[str, Any]) -> str | None:
+    images = item.get("image_urls")
+    if isinstance(images, list) and images and isinstance(images[0], str):
+        return images[0]
+    image = item.get("image_url")
+    return image if isinstance(image, str) and image else None
+
+
 def _priced_lines(uid: str, cart_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Resolve every cart line against the catalogue, or refuse the checkout."""
     store = get_store()
@@ -148,6 +156,8 @@ def _priced_lines(uid: str, cart_items: list[dict[str, Any]]) -> list[dict[str, 
                 "product_type": product_type,
                 "product_id": product_id,
                 "title": str(item.get("title") or ""),
+                # Kept in the order so the confirmation and the history show it (#144).
+                "image_url": _first_image(item),
                 "quantity": quantity,
                 "unit_price_cents": price,
                 "price_cents": price * quantity,
@@ -179,7 +189,8 @@ def _build_orders(uid: str, checkout_id: str, lines: list[dict[str, Any]], curre
                 "seller_id": seller_id,
                 "items": [
                     {key: line[key] for key in (
-                        "product_type", "product_id", "title", "quantity", "unit_price_cents", "price_cents", "offer_id",
+                        "product_type", "product_id", "title", "image_url", "quantity", "unit_price_cents",
+                        "price_cents", "offer_id",
                     )}
                     for line in seller_lines
                 ],
@@ -381,7 +392,27 @@ def list_recent_sales(uid: str, now: int) -> list[dict[str, Any]]:
 
 
 def list_orders(uid: str) -> list[dict[str, Any]]:
-    return [public_order(order) for order in get_store().list_user_orders(uid, ORDER_HISTORY_LIMIT)]
+    orders = [public_order(order) for order in get_store().list_user_orders(uid, ORDER_HISTORY_LIMIT)]
+    _add_missing_images(orders)
+    return orders
+
+
+def _add_missing_images(orders: list[dict[str, Any]]) -> None:
+    """Orders placed before the photo was kept show the product's current one (#144)."""
+    store = get_store()
+    found: dict[tuple[str, str], str | None] = {}
+    for order in orders:
+        for item in order.get("items") or []:
+            if item.get("image_url"):
+                continue
+            key = (str(item.get("product_type") or ""), str(item.get("product_id") or ""))
+            if key not in found:
+                try:
+                    product = store.get_item(*key) if key[0] in marketplace_store.PRODUCT_SOURCES and key[1] else None
+                except Exception:  # noqa: BLE001 - a missing photo must never hide the history
+                    product = None
+                found[key] = _first_image(product) if product else None
+            item["image_url"] = found[key]
 
 
 def get_order(uid: str, order_id: str) -> dict[str, Any]:
@@ -390,4 +421,6 @@ def get_order(uid: str, order_id: str) -> dict[str, Any]:
         raise CheckoutError(404, "order not found")
     if order.get("uid") != uid:
         raise CheckoutError(403, "this order belongs to another user")
-    return public_order(order)
+    result = public_order(order)
+    _add_missing_images([result])
+    return result

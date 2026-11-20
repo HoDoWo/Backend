@@ -285,3 +285,30 @@ def test_another_users_order_is_forbidden(store, gateway, stripe_off):
 
     assert client.get("/api/marketplace/orders/other").status_code == 403
     assert client.get("/api/marketplace/orders/missing").status_code == 404
+
+
+def test_the_order_keeps_the_photo_of_each_item_for_the_history(store, gateway, stripe_off):
+    store.items[("part", "pump-1")]["image_url"] = "https://example.test/pump.webp"
+    store.items[("part", "pump-1")]["image_urls"] = None
+
+    client.post("/api/marketplace/checkout")
+    items = [item for order in client.get("/api/marketplace/orders").json()["orders"] for item in order["items"]]
+
+    pump = next(item for item in items if item["product_id"] == "pump-1")
+    assert pump["image_url"] == "https://example.test/pump.webp"
+    assert all("image_url" in item for item in items)
+
+
+def test_an_order_placed_before_photos_were_kept_shows_the_product_photo(store, gateway, stripe_off):
+    store.save_order("old", {
+        "order_id": "old", "checkout_id": "c0", "uid": BUYER, "created_at": 1, "status": "paid",
+        "items": [{"product_type": "part", "product_id": "pump-1", "title": "Drain pump", "quantity": 1},
+                  {"product_type": "part", "product_id": "gone", "title": "Removed", "quantity": 1}],
+    })
+    store.items[("part", "pump-1")]["image_urls"] = ["https://example.test/pump.webp"]
+
+    order = client.get("/api/marketplace/orders/old").json()
+    listed = next(o for o in client.get("/api/marketplace/orders").json()["orders"] if o["order_id"] == "old")
+
+    assert [item["image_url"] for item in order["items"]] == ["https://example.test/pump.webp", None]
+    assert listed["items"][0]["image_url"] == "https://example.test/pump.webp"

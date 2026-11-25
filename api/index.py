@@ -16,6 +16,7 @@ import logging_config  # noqa: E402
 import schemas  # noqa: E402
 import slowapi  # noqa: E402
 from endpoints import (  # noqa: E402
+    ar_scan,
     bookmarks,
     cart,
     chat,
@@ -52,6 +53,7 @@ app.include_router(rating.rate_router)
 app.include_router(bookmarks.bookmark_router)
 app.include_router(locate_buttons.locate_router)
 app.include_router(guide_locate.guide_locate_router)
+app.include_router(ar_scan.ar_scan_router)
 app.include_router(environmental_tip.environmental_tip_router)
 app.include_router(marketplace.marketplace_router)
 app.include_router(checkout.checkout_router)

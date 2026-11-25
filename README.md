@@ -77,6 +77,7 @@ Missing or invalid values fail fast with a clear message from `api/config.py`.
 | `POST` | `/api/chat/stream` | Bearer JWT | Same as `/api/chat`, answered with Server-Sent Events (`step`, `token`, `response`, `error`) |
 | `POST` | `/api/panel/analyze` | Bearer JWT | Detects the buttons and dials in a cropped panel photo |
 | `POST` | `/api/guide/locate` | Bearer JWT | Finds the controls of guide steps in a live camera frame (AR auto-alignment) |
+| `POST` | `/api/ar/scan` | Bearer JWT | Names the device in a camera frame and its main visible controls (AR tab) |
 | `POST` | `/api/manuals` | Bearer JWT | Explicitly saves a manual to Firebase Firestore |
 | `PATCH` | `/api/manuals/{manual_id}/bookmark` | Bearer JWT | Sets a manual bookmark for its owner |
 | `POST` | `/api/manuals/{manual_id}/rate` | Bearer JWT | Toggles or changes a like/dislike rating |
@@ -378,6 +379,32 @@ asking the user to aim at two controls.
   non-multipart body → `415`, oversized image → `413`. A malformed model
   answer is retried once, then `502`. Rate limited like the other AI endpoints.
 
+### `POST /api/ar/scan`
+
+AR tab without chat or guide: the user points the phone at an appliance, a
+keyboard, a remote…; the app sends one camera frame and shows the device name
+and a label on each main control, anchored on the real device.
+
+- **Body**: `multipart/form-data` with `image` (required, the camera frame)
+  and optional `language` (BCP-47, the language of labels and descriptions).
+- **Response** (`200`):
+
+  ```json
+  {
+    "device": {"name": "Washing machine", "brand": "Bosch", "model": null},
+    "controls": [
+      {"label": "Start/Pause", "description": "Starts or pauses the cycle", "x": 0.71, "y": 0.42}
+    ]
+  }
+  ```
+
+  At most 8 controls, most important first, one per label, each with its
+  centre normalised to the frame. `device` is `null` (and `controls` empty)
+  when no device is visible. Labels are at most 30 characters.
+- **Controlled failures**: no image → `422`, non-multipart body → `415`,
+  oversized image → `413`, malformed model answer retried once then `502`.
+  Rate limited like the other AI endpoints.
+
 ## Authentication
 
 `POST /api/chat` requires `Authorization: Bearer <token>`. The middleware
@@ -395,7 +422,7 @@ request from another origin is rejected by the browser.
 
 ## Rate limiting
 
-`POST /api/chat`, `POST /api/panel/analyze` and `POST /api/guide/locate` are limited per client IP
+`POST /api/chat`, `POST /api/panel/analyze`, `POST /api/guide/locate` and `POST /api/ar/scan` are limited per client IP
 (default `20/minute`); exceeding it
 returns `429`. The counter is kept in process memory, so on Vercel each
 instance has its own counter and a burst can still slip through across

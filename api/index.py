@@ -24,6 +24,7 @@ from endpoints import (  # noqa: E402
     conversations,
     environmental_tip,
     forum,
+    guide_locate,
     listing_ai,
     listings,
     partner_catalogue,
@@ -50,6 +51,7 @@ app.include_router(manuals.manuals_router)
 app.include_router(rating.rate_router)
 app.include_router(bookmarks.bookmark_router)
 app.include_router(locate_buttons.locate_router)
+app.include_router(guide_locate.guide_locate_router)
 app.include_router(environmental_tip.environmental_tip_router)
 app.include_router(marketplace.marketplace_router)
 app.include_router(checkout.checkout_router)

@@ -76,6 +76,7 @@ Missing or invalid values fail fast with a clear message from `api/config.py`.
 | `POST` | `/api/chat` | Bearer JWT | Text and/or image question answered by the AI agent |
 | `POST` | `/api/chat/stream` | Bearer JWT | Same as `/api/chat`, answered with Server-Sent Events (`step`, `token`, `response`, `error`) |
 | `POST` | `/api/panel/analyze` | Bearer JWT | Detects the buttons and dials in a cropped panel photo |
+| `POST` | `/api/guide/locate` | Bearer JWT | Finds the controls of guide steps in a live camera frame (AR auto-alignment) |
 | `POST` | `/api/manuals` | Bearer JWT | Explicitly saves a manual to Firebase Firestore |
 | `PATCH` | `/api/manuals/{manual_id}/bookmark` | Bearer JWT | Sets a manual bookmark for its owner |
 | `POST` | `/api/manuals/{manual_id}/rate` | Bearer JWT | Toggles or changes a like/dislike rating |
@@ -347,6 +348,36 @@ interactive overlay (S1-15).
   unusable the endpoint returns `502` with a clear message. Missing image →
   `422`, non-multipart body → `415`, oversized image → `413`.
 
+### `POST /api/guide/locate`
+
+AR auto-alignment: the app sends one camera frame and the steps of a repair
+guide; the vision model says where the controls of the requested steps are in
+that frame. The app then anchors the guide pins on the real appliance without
+asking the user to aim at two controls.
+
+- **Body**: `multipart/form-data` with
+  - `image` (required): the camera frame (JPEG);
+  - `steps` (required): JSON array of
+    `{"step": 1, "title": "...", "description": "...", "pin_x": 0.2, "pin_y": 0.3}`
+    (at most 30; `pin_x/pin_y` are the step's pin on the guide photo, when it has one);
+  - `targets` (optional): step numbers to find, e.g. `1,3` (default: all, at most 4);
+  - `reference` (optional): the guide photo the pins refer to, which helps the
+    model match the same control in both images;
+  - `appliance` (optional): e.g. `Bosch Serie 6 washing machine`.
+- **Response** (`200`):
+
+  ```json
+  {"points": [{"step": 3, "x": 0.71, "y": 0.42, "confidence": 0.9}]}
+  ```
+
+  Points are normalised to the frame (0..1 from the left and top edges). Only
+  requested steps found inside the frame with confidence ≥ 0.5 are returned,
+  one per step; the app asks the user for the missing ones.
+
+- **Controlled failures**: no image or invalid `steps`/`targets` → `422`,
+  non-multipart body → `415`, oversized image → `413`. A malformed model
+  answer is retried once, then `502`. Rate limited like the other AI endpoints.
+
 ## Authentication
 
 `POST /api/chat` requires `Authorization: Bearer <token>`. The middleware
@@ -364,7 +395,7 @@ request from another origin is rejected by the browser.
 
 ## Rate limiting
 
-`POST /api/chat` and `POST /api/panel/analyze` are limited per client IP
+`POST /api/chat`, `POST /api/panel/analyze` and `POST /api/guide/locate` are limited per client IP
 (default `20/minute`); exceeding it
 returns `429`. The counter is kept in process memory, so on Vercel each
 instance has its own counter and a burst can still slip through across

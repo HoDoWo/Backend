@@ -26,6 +26,10 @@ logger = logging_config.get_logger(__name__)
 
 # The app shows at most this many labels: more would cover the device.
 MAX_CONTROLS = 8
+
+# Boxes come as [ymin, xmin, ymax, xmax] on a 0..1000 grid: the format vision
+# models localise best (more precise than asking for a single point).
+BOX_SCALE = 1000
 MAX_LABEL_CHARS = 30
 MAX_DESCRIPTION_CHARS = 160
 MAX_NAME_CHARS = 80
@@ -60,12 +64,15 @@ SYSTEM_PROMPT = (
     "when readable). Then list its MAIN controls that are clearly visible in the frame: the "
     "buttons, dials, switches, displays or keys a person uses most (on a keyboard: e.g. Enter, "
     "Space, Shift, Esc, Backspace, arrow keys, power). At most {max_controls}, most important "
-    "first. For each: a short label (1 to 3 words, the text printed on it when readable), one "
-    "sentence on what it does, and the point at its centre. Do not guess hidden or unreadable "
-    "controls. Write labels and descriptions in {language}. Respond ONLY with JSON: "
+    "first. For each: a short label (1 to 3 words), one sentence on what it does, and its "
+    "bounding box tight around the control itself (not its printed caption), as "
+    "[ymin, xmin, ymax, xmax] on a 0-1000 grid of the image (0,0 = top-left). Do not guess "
+    "hidden or unreadable controls. LANGUAGE: write the device name, every label and every "
+    "description in {language}, translating the text printed on the device when it is in "
+    "another language; never mix languages. Respond ONLY with JSON: "
     '{{"device": {{"name": "...", "brand": "..." or null, "model": "..." or null}} or null, '
-    '"controls": [{{"label": "...", "description": "...", "x": 0..1 from the left edge, '
-    '"y": 0..1 from the top edge}}]}}. Use {{"device": null, "controls": []}} when no device is visible.'
+    '"controls": [{{"label": "...", "description": "...", "box": [ymin, xmin, ymax, xmax]}}]}}. '
+    'Use {{"device": null, "controls": []}} when no device is visible.'
 )
 
 
@@ -101,6 +108,18 @@ def coerce_device(raw: Any) -> ScannedDevice | None:
     )
 
 
+def _centre(item: dict[str, Any]) -> tuple[float | None, float | None]:
+    """Centre of the control, 0..1: from its 0-1000 box, or from x/y (0..1) as a fallback."""
+    box = item.get("box") or item.get("box_2d")
+    if isinstance(box, list) and len(box) == 4:
+        values = [_number(value) for value in box]
+        if all(value is not None for value in values):
+            ymin, xmin, ymax, xmax = values  # type: ignore[misc]
+            if 0 <= xmin <= xmax <= BOX_SCALE and 0 <= ymin <= ymax <= BOX_SCALE:
+                return (xmin + xmax) / 2 / BOX_SCALE, (ymin + ymax) / 2 / BOX_SCALE
+    return _number(item.get("x")), _number(item.get("y"))
+
+
 def coerce_controls(raw: Any) -> list[ScannedControl]:
     """Keep labelled, in-frame controls; one per label; at most :data:`MAX_CONTROLS`."""
     if not isinstance(raw, list):
@@ -111,7 +130,7 @@ def coerce_controls(raw: Any) -> list[ScannedControl]:
         if not isinstance(item, dict):
             continue
         label = _text(item.get("label"), MAX_LABEL_CHARS)
-        x, y = _number(item.get("x")), _number(item.get("y"))
+        x, y = _centre(item)
         if not label or label.lower() in seen or x is None or y is None:
             continue
         if not (0 <= x <= 1 and 0 <= y <= 1):

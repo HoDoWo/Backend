@@ -79,6 +79,23 @@ def _normalise_lists(result: dict[str, Any]) -> None:
             result[field] = [_as_text(item) for item in result[field]]
 
 
+# Pins are asked as a box on a 0-1000 grid (the most precise way vision models
+# locate things); the centre of the box is the pin.
+PIN_BOX_SCALE = 1000
+
+
+def _pin_point(item: dict[str, Any]) -> tuple[Any, Any]:
+    """The pin's x, y (0..1): the centre of its 0-1000 box, else its own x/y."""
+    box = item.get("box") or item.get("box_2d")
+    if isinstance(box, list) and len(box) == 4 and all(
+        isinstance(v, (int, float)) and not isinstance(v, bool) for v in box
+    ):
+        ymin, xmin, ymax, xmax = box
+        if 0 <= xmin <= xmax <= PIN_BOX_SCALE and 0 <= ymin <= ymax <= PIN_BOX_SCALE:
+            return (xmin + xmax) / 2 / PIN_BOX_SCALE, (ymin + ymax) / 2 / PIN_BOX_SCALE
+    return item.get("x"), item.get("y")
+
+
 def _clean_pins(result: dict[str, Any]) -> None:
     """Keep only valid pins: {"step": n, "x": 0..1, "y": 0..1}, one per step.
 
@@ -93,7 +110,8 @@ def _clean_pins(result: dict[str, Any]) -> None:
     for item in raw:
         if not isinstance(item, dict):
             continue
-        step, x, y = item.get("step"), item.get("x"), item.get("y")
+        step = item.get("step")
+        x, y = _pin_point(item)
         if isinstance(step, bool) or not isinstance(step, int) or not 1 <= step <= steps:
             continue
         if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1 for v in (x, y)):
@@ -189,18 +207,29 @@ def retrieve_manual(
                     "unclear, the model cannot be identified, or the request cannot "
                     "be answered reliably, set needs_clarification=true and explain "
                     "what is missing. Never advise opening the appliance, bypassing "
-                    "safety features, or unsafe repairs. Respond ONLY with JSON "
+                    "safety features, or unsafe repairs. "
+                    "LANGUAGE: write summary, steps and warnings in the language of the "
+                    "user request (Italian request, Italian answer), never mixing languages. "
+                    "STEPS: each step is one action the user does on the appliance (turn, "
+                    "press, hold, open, wait), written as \"Short title: what to do\", "
+                    "where the title names the action in at most 5 words (\"Set the "
+                    "timer: turn the middle knob to 30\"), never \"Step 1\". Never "
+                    "write steps about the photo, the image, captions, labels or overlays. "
+                    "Respond ONLY with JSON "
                     "containing appliance_name, brand, model, identification_confidence, "
                     "visible_evidence, needs_better_image, summary, steps (array of "
                     "strings), warnings (array of strings), needs_clarification "
                     "(boolean), confidence (number from 0 to 1) and pins. Use null for "
                     "unknown appliance fields. pins marks on the image where each step "
-                    "happens: an array of {\"step\": step number from 1, \"x\": 0..1 "
-                    "from the left edge, \"y\": 0..1 from the top edge} at the centre "
-                    "of the button, dial, label or part the step uses. Give a pin to "
+                    "happens: an array of {\"step\": step number from 1, \"box\": "
+                    "[ymin, xmin, ymax, xmax]} on a 0-1000 grid of the image (0,0 top "
+                    "left, 1000,1000 bottom right), a tight box around the button, dial, "
+                    "label or part the step uses. Give a pin to "
                     "every step that uses something visible in the image, also when "
-                    "several steps use the same control (repeat its point for each "
-                    "of them) and for a programme label printed around a dial. Leave "
+                    "several steps use the same control (repeat its box for each "
+                    "of them) and for a programme label printed around a dial. Steps on "
+                    "different controls must have different boxes, each on its own "
+                    "control. Leave "
                     "out only steps that use nothing you can see (a safety note, "
                     "waiting); use [] when there is no image or you are not sure."
                 ),

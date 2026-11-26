@@ -10,3 +10,7 @@ def test_follow_ups_are_answered_from_the_history():
 
 def test_tool_names_are_not_shown_to_the_user():
     assert "never mention your tools or their names to the user" in SYSTEM_PROMPT
+
+
+def test_the_agent_answers_in_the_users_language():
+    assert "Always answer in the language of the user's latest message" in SYSTEM_PROMPT

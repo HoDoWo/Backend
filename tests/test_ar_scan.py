@@ -142,3 +142,29 @@ def test_endpoint_reports_a_model_failure_as_bad_gateway(monkeypatch):
         "/api/ar/scan", files={"image": ("f.jpg", b"x", "image/jpeg")}, headers=_auth_headers()
     )
     assert response.status_code == 502
+
+
+def test_controls_use_the_centre_of_their_0_1000_box():
+    scan = scan_module.coerce_scan(
+        {
+            "device": {"name": "Washing machine"},
+            "controls": [
+                {"label": "Start", "box": [400, 700, 500, 800]},  # centre (0.75, 0.45)
+                {"label": "Dial", "box_2d": ["100", "200", "300", "400"]},  # Gemini's key, numbers as text
+                {"label": "Bad box", "box": [500, 700, 400, 800], "x": 0.1, "y": 0.2},  # ymin > ymax: use x/y
+                {"label": "Out", "box": [0, 0, 2000, 10]},  # outside the grid, no x/y: dropped
+            ],
+        }
+    )
+    assert [(c.label, c.x, c.y) for c in scan.controls] == [
+        ("Start", 0.75, 0.45),
+        ("Dial", 0.3, 0.2),
+        ("Bad box", 0.1, 0.2),
+    ]
+
+
+def test_prompt_asks_for_boxes_and_a_single_language():
+    prompt = scan_module.SYSTEM_PROMPT.format(max_controls=8, language="Italian")
+    assert "[ymin, xmin, ymax, xmax]" in prompt
+    assert "never mix languages" in prompt
+    assert "Italian" in prompt

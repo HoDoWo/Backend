@@ -399,7 +399,10 @@ and a label on each main control, anchored on the real device.
   ```
 
   At most 8 controls, most important first, one per label, each with its
-  centre normalised to the frame. `device` is `null` (and `controls` empty)
+  centre normalised to the frame. The model is asked for a tight box per
+  control (`[ymin, xmin, ymax, xmax]` on a 0–1000 grid, the format vision
+  models localise best) and the centre is computed from it; names, labels and
+  descriptions are all in the requested `language`. `device` is `null` (and `controls` empty)
   when no device is visible. Labels are at most 30 characters.
 - **Controlled failures**: no image → `422`, non-multipart body → `415`,
   oversized image → `413`, malformed model answer retried once then `502`.

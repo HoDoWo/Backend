@@ -26,6 +26,11 @@ dotenv.load_dotenv()
 DEFAULT_ALLOWED_ORIGINS = "http://localhost:3000,https://app.hodowo.com"
 DEFAULT_AI_RATE_LIMIT = "20/minute"
 DEFAULT_OPENROUTER_MODEL = "openrouter/free"
+# AR vision calls only: Google's OpenAI-compatible Gemini endpoint. The "latest"
+# alias keeps working when Google retires a version; Flash-Lite has the largest
+# free daily quota.
+DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest"
+GEMINI_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 _VALID_ENVIRONMENTS = {"dev", "prod"}
 
@@ -117,6 +122,36 @@ def get_openrouter_llm() -> langchain_openai.ChatOpenAI:
         timeout=60,
         max_retries=1,
     )
+
+
+def get_gemini_model() -> str:
+    """Return the Gemini model id for the AR calls, falling back to the default."""
+    model = get_optional_env("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    return model or DEFAULT_GEMINI_MODEL
+
+
+def get_ar_vision_llm():
+    """The model for the AR camera calls (scan, guide locate).
+
+    With ``GEMINI_API_KEY`` set they go straight to Gemini, and fall back to
+    OpenRouter when Gemini fails (quota used up, outage). Without it they use
+    OpenRouter like the rest of the app. Chat and every other AI feature keep
+    using :func:`get_openrouter_llm` and are not affected.
+    """
+    openrouter = get_openrouter_llm()
+    api_key = get_optional_env("GEMINI_API_KEY")
+    if not api_key:
+        return openrouter
+    gemini = langchain_openai.ChatOpenAI(
+        model=get_gemini_model(),
+        api_key=api_key,
+        base_url=GEMINI_OPENAI_BASE_URL,
+        temperature=0,
+        timeout=60,
+        # A 429 means the daily quota is gone: go to OpenRouter at once.
+        max_retries=0,
+    )
+    return gemini.with_fallbacks([openrouter])
     
 
 DEFAULT_STRIPE_CURRENCY = "eur"

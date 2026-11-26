@@ -22,7 +22,7 @@ import config
 import logging_config
 from manual_retrieve import _image_data_url, _load_json_object
 
-_get_openrouter_llm = config.get_openrouter_llm
+_get_vision_llm = config.get_ar_vision_llm
 
 logger = logging_config.get_logger(__name__)
 
@@ -205,7 +205,7 @@ def locate_steps(
     Retries once when the model does not answer with JSON, then raises
     :class:`GuideLocateError`.
     """
-    llm = _get_openrouter_llm()
+    llm = _get_vision_llm()
     messages = build_messages(frame_path, steps, targets, reference_path, appliance)
     for attempt in range(2):
         response = llm.invoke(messages)

@@ -76,7 +76,7 @@ def test_scan_frame_asks_in_the_requested_language(frame, monkeypatch):
     model = FakeModel(
         FakeResponse('{"device": {"name": "Teclado"}, "controls": [{"label": "Intro", "x": 0.8, "y": 0.6}]}')
     )
-    monkeypatch.setattr(scan_module, "_get_openrouter_llm", lambda: model)
+    monkeypatch.setattr(scan_module, "_get_vision_llm", lambda: model)
 
     scan = scan_module.scan_frame(frame, language="es")
 
@@ -89,12 +89,12 @@ def test_scan_frame_asks_in_the_requested_language(frame, monkeypatch):
 
 def test_scan_frame_retries_once_then_fails(frame, monkeypatch):
     model = FakeModel(FakeResponse("nope"), FakeResponse('```json\n{"device": null, "controls": []}\n```'))
-    monkeypatch.setattr(scan_module, "_get_openrouter_llm", lambda: model)
+    monkeypatch.setattr(scan_module, "_get_vision_llm", lambda: model)
     assert scan_module.scan_frame(frame).device is None
     assert len(model.calls) == 2
 
     broken = FakeModel(FakeResponse("no"), FakeResponse("still no"))
-    monkeypatch.setattr(scan_module, "_get_openrouter_llm", lambda: broken)
+    monkeypatch.setattr(scan_module, "_get_vision_llm", lambda: broken)
     with pytest.raises(ArScanError):
         scan_module.scan_frame(frame)
 

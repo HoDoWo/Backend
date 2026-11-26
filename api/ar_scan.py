@@ -20,7 +20,7 @@ import logging_config
 from manual_retrieve import _image_data_url, _load_json_object
 from panel_analyze import _language_name
 
-_get_openrouter_llm = config.get_openrouter_llm
+_get_vision_llm = config.get_ar_vision_llm
 
 logger = logging_config.get_logger(__name__)
 
@@ -180,7 +180,7 @@ def _as_text(content: Any) -> str:
 
 def scan_frame(frame_path: str, language: str = "en") -> ArScan:
     """Device and main controls in the frame. Retries once on invalid JSON, then raises :class:`ArScanError`."""
-    llm = _get_openrouter_llm()
+    llm = _get_vision_llm()
     messages = build_messages(frame_path, language)
     for attempt in range(2):
         response = llm.invoke(messages)

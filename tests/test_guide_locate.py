@@ -115,7 +115,7 @@ def test_locate_sends_frame_reference_steps_and_pins(frame, tmp_path, monkeypatc
     reference = tmp_path / "reference.jpg"
     reference.write_bytes(b"reference-bytes")
     model = FakeModel(FakeResponse('{"points": [{"step": 3, "x": 0.6, "y": 0.4, "confidence": 0.8}]}'))
-    monkeypatch.setattr(guide_module, "_get_openrouter_llm", lambda: model)
+    monkeypatch.setattr(guide_module, "_get_vision_llm", lambda: model)
 
     steps = guide_module.parse_steps(json.dumps(STEPS))
     points = guide_module.locate_steps(frame, steps, [1, 3], str(reference), "Bosch washing machine")
@@ -133,7 +133,7 @@ def test_locate_sends_frame_reference_steps_and_pins(frame, tmp_path, monkeypatc
 
 def test_locate_without_reference_sends_only_the_frame(frame, monkeypatch):
     model = FakeModel(FakeResponse('{"points": []}'))
-    monkeypatch.setattr(guide_module, "_get_openrouter_llm", lambda: model)
+    monkeypatch.setattr(guide_module, "_get_vision_llm", lambda: model)
 
     assert guide_module.locate_steps(frame, [GuideStep(step=1, title="Open")], [1]) == []
     assert len([part for part in model.calls[0][1][1] if part["type"] == "image_url"]) == 1
@@ -141,7 +141,7 @@ def test_locate_without_reference_sends_only_the_frame(frame, monkeypatch):
 
 def test_locate_retries_once_after_invalid_json(frame, monkeypatch):
     model = FakeModel(FakeResponse("Sure! Here it is."), FakeResponse('```json\n{"points": [{"step": 1, "x": 0.1, "y": 0.2}]}\n```'))
-    monkeypatch.setattr(guide_module, "_get_openrouter_llm", lambda: model)
+    monkeypatch.setattr(guide_module, "_get_vision_llm", lambda: model)
 
     points = guide_module.locate_steps(frame, [GuideStep(step=1)], [1])
     assert [point.step for point in points] == [1]
@@ -150,7 +150,7 @@ def test_locate_retries_once_after_invalid_json(frame, monkeypatch):
 
 def test_locate_raises_after_two_invalid_answers(frame, monkeypatch):
     model = FakeModel(FakeResponse("no"), FakeResponse("still no"))
-    monkeypatch.setattr(guide_module, "_get_openrouter_llm", lambda: model)
+    monkeypatch.setattr(guide_module, "_get_vision_llm", lambda: model)
 
     with pytest.raises(GuideLocateError):
         guide_module.locate_steps(frame, [GuideStep(step=1)], [1])

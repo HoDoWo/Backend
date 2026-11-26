@@ -240,3 +240,32 @@ def test_format_chat_response_puts_the_pins_on_their_steps():
 
     assert "pin" not in formatted["steps"][0]
     assert formatted["steps"][1]["pin"] == {"x": 0.8, "y": 0.25}
+
+def test_the_guide_steps_come_from_the_manual_not_from_the_overlay():
+    from response_formatting import format_chat_response as _format_chat_response
+
+    class ManualToolMessage:
+        content = (
+            '{"summary": "Imposta il timer.", '
+            '"steps": ["Gira il contaminuti: ruota la manopola centrale su 30.", '
+            '"Scegli la funzione: ruota la manopola di sinistra."], '
+            '"pins": [{"step": 1, "x": 0.5, "y": 0.4}, {"step": 2, "x": 0.2, "y": 0.4}], '
+            '"warnings": []}'
+        )
+
+    class OverlayToolMessage:
+        # The drawing instructions the agent gave the overlay: not the guide.
+        content = (
+            '{"image_url": "https://output.example/guide.png", "task_id": "t1", '
+            '"steps": ["Use the original oven control panel photo", "Circle the middle knob", '
+            '"Add caption", "Keep overlay simple and readable"]}'
+        )
+
+    formatted = _format_chat_response(
+        [ManualToolMessage(), OverlayToolMessage()], None, "Come imposto il timer?"
+    )
+
+    assert [step["title"] for step in formatted["steps"]] == ["Gira il contaminuti", "Scegli la funzione"]
+    assert formatted["steps"][0]["pin"] == {"x": 0.5, "y": 0.4}
+    assert formatted["steps"][1]["pin"] == {"x": 0.2, "y": 0.4}
+    assert formatted["image"] == "https://output.example/guide.png"

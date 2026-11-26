@@ -144,4 +144,32 @@ def test_the_model_is_asked_for_a_pin_on_every_step_it_can_see(monkeypatch):
 
     system_text = model.messages[0][1]
     assert "every step that uses something visible" in system_text
-    assert "repeat its point for each" in system_text
+    assert "repeat its box for each" in system_text
+
+
+def test_pins_given_as_a_box_use_its_centre(monkeypatch):
+    raw = {
+        **_manual_result(),
+        "pins": [
+            {"step": 1, "box": [400, 200, 500, 300]},
+            {"step": 2, "box": [500, 900, 400, 1000]},  # ymin > ymax: dropped
+        ],
+    }
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: FakeModel(FakeResponse(json.dumps(raw))))
+
+    result = manual_module.retrieve_manual("How do I run a quick wash?")
+
+    assert result["pins"] == [{"step": 1, "x": 0.25, "y": 0.45}]
+
+
+def test_the_model_writes_real_actions_in_the_users_language(monkeypatch):
+    model = FakeModel(FakeResponse(json.dumps(_manual_result())))
+    monkeypatch.setattr(manual_module, "_get_openrouter_llm", lambda: model)
+
+    manual_module.retrieve_manual("Come imposto il timer?")
+
+    system_text = model.messages[0][1]
+    assert "language of the user request" in system_text
+    assert "never \"Step 1\"" in system_text
+    assert "Never write steps about the photo" in system_text
+    assert "0-1000 grid" in system_text

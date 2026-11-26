@@ -43,13 +43,7 @@ def format_chat_response(
     generated_image: str | None = None,
 ) -> dict[str, Any]:
     tool_results = _json_tool_results(messages)
-    manual_info = next(
-        (
-            item for item in reversed(tool_results)
-            if isinstance(item.get("steps"), list) and item.get("steps")
-        ),
-        None,
-    )
+    manual_info = next((item for item in reversed(tool_results) if _is_manual(item)), None)
     appliance_info = next(
         (
             item for item in reversed(tool_results)
@@ -94,6 +88,23 @@ def format_chat_response(
         ],
         "image": image_url,
     }
+
+
+def _is_manual(item: dict[str, Any]) -> bool:
+    """The manual's answer, not the image overlay's.
+
+    The overlay tool also returns "steps": the drawing instructions the agent gave it
+    ("Circle the timer knob", "Keep overlay simple"). Those are not the guide: its steps
+    and pins come from the manual, which has a summary and no image.
+    """
+    steps = item.get("steps")
+    return (
+        isinstance(steps, list)
+        and bool(steps)
+        and "summary" in item
+        and "image_url" not in item
+        and "task_id" not in item
+    )
 
 
 def assistant_text(messages: list[object]) -> str:

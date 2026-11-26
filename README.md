@@ -52,6 +52,8 @@ keys: the repository is public.
 |----------|----------|---------|
 | `OPENROUTER_API_KEY` | yes (for AI calls) | Calls to OpenRouter |
 | `OPENROUTER_MODEL` | no | Model id; defaults to `openrouter/free` |
+| `GEMINI_API_KEY` | no | Google AI Studio key used **only** by the AR calls (`/api/ar/scan`, `/api/guide/locate`); they fall back to OpenRouter when Gemini fails. Chat and the other AI features are unaffected |
+| `GEMINI_MODEL` | no | Gemini model for the AR calls; defaults to `gemini-flash-lite-latest` |
 | `KIE_API_KEY` | no | Kie.ai image overlay of the guides; without it the guide is returned without the annotated image |
 | `KIE_TIMEOUT_SECONDS` | no | Longest wait for one Kie image; also limited by the request budget |
 | `REQUEST_BUDGET_SECONDS` | no | Time budget of one chat request; defaults to `240`, below Vercel's 300 s |
